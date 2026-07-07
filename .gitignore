@@ -3,3 +3,10 @@ venv/
 **/__pycache__/
 *.pyc
 .vscode/
+# Ignorar todas las imágenes temporales de formato PNG o JPG
+*.png
+*.jpg
+*.jpeg
+
+# Si se guardan en una carpeta específica del backend, añade la ruta completa:
+# nombre_de_tu_carpeta/
