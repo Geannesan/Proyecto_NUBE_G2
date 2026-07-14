@@ -1,75 +1,125 @@
-import os
-import uuid
+from fastapi import (
+    APIRouter,
+    Depends,
+    File,
+    HTTPException,
+    UploadFile,
+)
+from sqlalchemy.orm import Session
+
+from app.database.database import get_db
+from app.services.analysis_service import analyze_upload
 
 
-from fastapi import APIRouter
-from fastapi import UploadFile
-from fastapi import File
-from fastapi import HTTPException
+router = APIRouter(
+    tags=["Compatibility"],
+)
 
 
-from app.detector.detector import detect_fake
+async def _run(
+    *,
+    file: UploadFile,
+    media_type: str,
+    detector_type: str,
+    db: Session,
+):
+    try:
+        return await analyze_upload(
+            upload=file,
+            media_type=media_type,  # type: ignore[arg-type]
+            detector_type=detector_type,
+            db=db,
+        )
 
+    except ValueError as error:
+        raise HTTPException(
+            status_code=400,
+            detail=str(error),
+        ) from error
 
-
-router = APIRouter()
-
+    except Exception as error:
+        raise HTTPException(
+            status_code=500,
+            detail=(
+                "No fue posible completar el análisis. "
+                f"Detalle: {error}"
+            ),
+        ) from error
 
 
 @router.post("/analyze")
-async def analyze(
-    file: UploadFile = File(...)
+async def legacy_image_ai(
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
 ):
-
-
-    # validar imagen
-
-    if not file.content_type.startswith("image"):
-
-        raise HTTPException(
-            status_code=400,
-            detail="El archivo debe ser una imagen"
-        )
-
-
-
-    # crear carpeta
-
-    os.makedirs(
-        "uploads",
-        exist_ok=True
+    return await _run(
+        file=file,
+        media_type="image",
+        detector_type="ai",
+        db=db,
     )
 
 
-
-    # nombre único
-
-    file_path = (
-        f"uploads/{uuid.uuid4()}_{file.filename}"
+@router.post("/analyze/image/deepfake")
+async def legacy_image_deepfake(
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+):
+    return await _run(
+        file=file,
+        media_type="image",
+        detector_type="deepfake",
+        db=db,
     )
 
 
-
-    # guardar imagen
-
-    with open(
-        file_path,
-        "wb"
-    ) as buffer:
-
-
-        buffer.write(
-            await file.read()
-        )
-
-
-
-    # enviar al modelo
-
-    result = detect_fake(
-        file_path
+@router.post("/analyze/audio")
+async def legacy_audio_ai(
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+):
+    return await _run(
+        file=file,
+        media_type="audio",
+        detector_type="ai",
+        db=db,
     )
 
 
+@router.post("/analyze/audio/deepfake")
+async def legacy_audio_deepfake(
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+):
+    return await _run(
+        file=file,
+        media_type="audio",
+        detector_type="deepfake",
+        db=db,
+    )
 
-    return result
+
+@router.post("/analyze/video")
+async def legacy_video_ai(
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+):
+    return await _run(
+        file=file,
+        media_type="video",
+        detector_type="ai",
+        db=db,
+    )
+
+
+@router.post("/analyze/video/deepfake")
+async def legacy_video_deepfake(
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+):
+    return await _run(
+        file=file,
+        media_type="video",
+        detector_type="deepfake",
+        db=db,
+    )
