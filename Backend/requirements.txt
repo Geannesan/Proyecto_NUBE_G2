@@ -1,24 +1,29 @@
-annotated-doc==0.0.4
-annotated-types==0.7.0
-anyio==4.13.0
-click==8.4.1
-colorama==0.4.6
+# API
 fastapi==0.136.3
-h11==0.16.0
-idna==3.18
-numpy==2.4.6
-opencv-python==4.13.0.92
-pydantic==2.13.4
-pydantic_core==2.46.4
+uvicorn[standard]==0.49.0
 python-multipart==0.0.32
-starlette==1.2.1
-typing-inspection==0.4.2
-typing_extensions==4.15.0
-uvicorn==0.49.0
-fastapi
-uvicorn
-python-multipart
-opencv-python
-torch
-torchvision
-pillow
+
+# Inteligencia artificial
+transformers>=4.48,<6
+torch>=2.2
+torchvision>=0.17
+torchaudio>=2.2
+
+# Imagen, audio y video
+Pillow>=10
+numpy>=1.26,<3
+opencv-python-headless>=4.10
+librosa>=0.10.2
+soundfile>=0.12
+
+# Base de datos
+SQLAlchemy>=2.0,<3
+psycopg[binary]>=3.2
+pydantic-settings>=2.6
+
+# Reportes
+reportlab>=4.2
+
+# Pruebas
+pytest>=8
+httpx>=0.27
