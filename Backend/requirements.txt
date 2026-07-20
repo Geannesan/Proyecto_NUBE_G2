@@ -12,7 +12,7 @@ torchaudio>=2.2
 # Imagen, audio y video
 Pillow>=10
 numpy>=1.26,<3
-opencv-python-headless>=4.10
+opencv-python-headless==4.13.0.92
 librosa>=0.10.2
 soundfile>=0.12
 

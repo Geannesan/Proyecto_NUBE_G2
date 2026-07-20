@@ -16,28 +16,16 @@ const API_URL =
 */
 const ENDPOINTS = {
   image: {
-    ai:
-      import.meta.env.VITE_IMAGE_AI_ENDPOINT ||
-      "/analyze",
-    deepfake:
-      import.meta.env.VITE_IMAGE_DEEPFAKE_ENDPOINT ||
-      "/analyze/image/deepfake",
+    ai: "/api/v1/image/analyze",
+    deepfake: "/api/v1/image/analyze",
   },
   audio: {
-    ai:
-      import.meta.env.VITE_AUDIO_AI_ENDPOINT ||
-      "/analyze/audio",
-    deepfake:
-      import.meta.env.VITE_AUDIO_DEEPFAKE_ENDPOINT ||
-      "/analyze/audio/deepfake",
+    ai: "/api/v1/audio/analyze",
+    deepfake: "/api/v1/audio/analyze",
   },
   video: {
-    ai:
-      import.meta.env.VITE_VIDEO_AI_ENDPOINT ||
-      "/analyze/video",
-    deepfake:
-      import.meta.env.VITE_VIDEO_DEEPFAKE_ENDPOINT ||
-      "/analyze/video/deepfake",
+    ai: "/api/v1/video/analyze",
+    deepfake: "/api/v1/video/analyze",
   },
 };
 
@@ -396,29 +384,29 @@ function App() {
 
       const response = await axios.post(
         `${API_URL}${currentEndpoint}`,
-        formData,
-        {
-          headers: {
-            "Content-Type": "multipart/form-data",
-          },
-        }
+        formData
       );
 
       setResult(response.data);
     } catch (error) {
-      console.error(error);
+      console.error("Error completo:", error);
+      console.error("Respuesta backend:", error.response?.data);
 
-      const status = error?.response?.status;
+      const backendDetail =
+        error.response?.data?.detail ||
+        error.message ||
+        "Error desconocido";
 
-      if (status === 404) {
-        alert(
-          `La interfaz funciona, pero el backend todavía no tiene creada la ruta:\n${currentEndpoint}`
-        );
-      } else {
-        alert(
-          `No fue posible completar el análisis.\nRuta utilizada: ${currentEndpoint}\nVerifica que FastAPI esté ejecutándose en el puerto 8000.`
-        );
-      }
+      const status =
+        error.response?.status ||
+        "Sin respuesta";
+
+      alert(
+        `No fue posible completar el análisis.\n\n` +
+        `Estado: ${status}\n` +
+        `Ruta utilizada: ${currentEndpoint}\n` +
+        `Detalle: ${backendDetail}`
+      );
     } finally {
       setLoading(false);
     }
@@ -432,6 +420,13 @@ function App() {
         ""
     ).toLowerCase();
 
+    if (
+      prediction.includes("inconclusive") ||
+      prediction.includes("no concluyente")
+    ) {
+      return "inconclusive";
+    }
+
     return prediction.includes("fake") ||
       prediction.includes("ai") ||
       prediction.includes("ia") ||
@@ -441,11 +436,17 @@ function App() {
       : "real";
   };
 
-  const predictionText =
+  const rawPredictionText =
     result?.prediction ??
     result?.label ??
     result?.result ??
     "Resultado recibido";
+
+  const predictionText =
+    String(rawPredictionText).toUpperCase() ===
+    "INCONCLUSIVE"
+      ? "NO CONCLUYENTE"
+      : rawPredictionText;
 
   const modelReason =
     result?.analysis?.model_reason ??

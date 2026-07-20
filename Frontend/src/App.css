@@ -596,6 +596,10 @@
   border-top: 5px solid #36d77f;
 }
 
+.result-card.inconclusive {
+  border-top: 5px solid #f4b942;
+}
+
 .result-heading {
   display: flex;
   align-items: center;

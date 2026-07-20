@@ -1,3 +1,4 @@
+import logging
 from fastapi import (
     APIRouter,
     Depends,
@@ -10,6 +11,7 @@ from sqlalchemy.orm import Session
 from app.database.database import get_db
 from app.services.analysis_service import analyze_upload
 
+logger = logging.getLogger(__name__)
 
 router = APIRouter(
     tags=["Compatibility"],
@@ -31,18 +33,18 @@ async def _run(
             db=db,
         )
 
-    except ValueError as error:
-        raise HTTPException(
-            status_code=400,
-            detail=str(error),
-        ) from error
-
     except Exception as error:
+        logger.exception(
+            "Error procesando %s con detector %s",
+            media_type,
+            detector_type,
+        )
+
         raise HTTPException(
             status_code=500,
             detail=(
                 "No fue posible completar el análisis. "
-                f"Detalle: {error}"
+                f"Detalle: {type(error).__name__}: {error}"
             ),
         ) from error
 

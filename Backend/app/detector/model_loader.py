@@ -1,3 +1,9 @@
+from transformers import (
+    AutoFeatureExtractor,
+    AutoImageProcessor,
+    AutoModelForAudioClassification,
+    AutoModelForImageClassification,
+)
 import os
 from functools import lru_cache
 from typing import Any
@@ -31,7 +37,7 @@ HF_LOCAL_ONLY = (
 )
 
 USE_CUDA = (
-    os.getenv("USE_CUDA", "true").lower() == "true"
+    os.getenv("USE_CUDA", "false").lower() == "true"
 )
 
 
@@ -50,7 +56,7 @@ def _load_kwargs() -> dict[str, Any]:
 
 @lru_cache(maxsize=1)
 def load_image_ai_components():
-    processor = AutoImageProcessor.from_pretrained(
+    image_processor = AutoImageProcessor.from_pretrained(
         IMAGE_AI_MODEL_NAME,
         **_load_kwargs(),
     )
@@ -64,12 +70,12 @@ def load_image_ai_components():
     model.to(device)
     model.eval()
 
-    return processor, model, device
+    return image_processor, model, device
 
 
 @lru_cache(maxsize=1)
 def load_image_deepfake_components():
-    processor = AutoImageProcessor.from_pretrained(
+    image_processor = AutoImageProcessor.from_pretrained(
         IMAGE_DEEPFAKE_MODEL_NAME,
         **_load_kwargs(),
     )
@@ -83,7 +89,7 @@ def load_image_deepfake_components():
     model.to(device)
     model.eval()
 
-    return processor, model, device
+    return image_processor, model, device
 
 
 @lru_cache(maxsize=1)

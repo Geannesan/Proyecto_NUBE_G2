@@ -28,6 +28,21 @@ def build_model_reason(
         "deepfake": "manipulación o deepfake",
     }.get(detector_type, "contenido sintético")
 
+    if result.prediction.upper() == "INCONCLUSIVE":
+        reason = str(
+            result.metadata.get(
+                "quality_reason",
+                "La entrada no alcanzó un consenso suficiente.",
+            )
+        )
+
+        return (
+            "El análisis no es concluyente. "
+            f"{reason} "
+            "Pruebe con una fotografía original, nítida y con "
+            "un solo rostro visible en primer plano."
+        )
+
     if result.prediction.upper() in SUSPICIOUS_LABELS:
         return (
             f"El modelo encontró en {media_name} señales compatibles "
@@ -57,16 +72,19 @@ def build_analysis_response(
         "detector_type": detector_type,
         "filename": filename,
         "prediction": result.prediction,
-        "confidence": round(result.confidence, 2),
+        "confidence": round(
+            float(result.confidence),
+            2,
+        ),
         "probabilities": {
-            key: round(value, 2)
+            key: round(float(value), 2)
             for key, value in result.probabilities.items()
         },
         "analysis": {
             "model_reason": build_model_reason(
-                result,
-                media_type,
-                detector_type,
+                result=result,
+                media_type=media_type,
+                detector_type=detector_type,
             ),
             "evidence": result.evidence,
         },
@@ -78,10 +96,10 @@ def build_analysis_response(
         "processing_time_ms": processing_time_ms,
     }
 
-    if analysis_id:
+    if analysis_id is not None:
         payload["analysis_id"] = analysis_id
 
-    if created_at:
+    if created_at is not None:
         payload["created_at"] = created_at
 
     return payload

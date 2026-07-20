@@ -2,7 +2,11 @@ import os
 from collections.abc import Generator
 
 from sqlalchemy import create_engine
-from sqlalchemy.orm import DeclarativeBase, Session, sessionmaker
+from sqlalchemy.orm import (
+    DeclarativeBase,
+    Session,
+    sessionmaker,
+)
 
 
 DATABASE_URL = os.getenv(
@@ -10,16 +14,19 @@ DATABASE_URL = os.getenv(
     "sqlite:///./deepfakeshield.db",
 )
 
+
 connect_args: dict[str, object] = {}
 
 if DATABASE_URL.startswith("sqlite"):
     connect_args["check_same_thread"] = False
+
 
 engine = create_engine(
     DATABASE_URL,
     connect_args=connect_args,
     pool_pre_ping=True,
 )
+
 
 SessionLocal = sessionmaker(
     bind=engine,
@@ -31,7 +38,7 @@ SessionLocal = sessionmaker(
 
 
 class Base(DeclarativeBase):
-    """Base class for SQLAlchemy models."""
+    pass
 
 
 def get_db() -> Generator[Session, None, None]:
@@ -44,6 +51,7 @@ def get_db() -> Generator[Session, None, None]:
 
 
 def init_db() -> None:
+    # Este import registra Analysis en Base.metadata.
     from app.database import models  # noqa: F401
 
     Base.metadata.create_all(bind=engine)
