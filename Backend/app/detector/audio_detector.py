@@ -55,7 +55,7 @@ AUDIO_TRIM_TOP_DB = float(
 )
 
 AUDIO_AI_THRESHOLD = float(
-    os.getenv("AUDIO_AI_THRESHOLD", "82")
+    os.getenv("AUDIO_AI_THRESHOLD", "95")
 )
 
 AUDIO_AI_REAL_THRESHOLD = float(
@@ -78,6 +78,10 @@ AUDIO_DEEPFAKE_REAL_THRESHOLD = float(
 
 AUDIO_MIN_VOTE_RATIO = float(
     os.getenv("AUDIO_MIN_VOTE_RATIO", "0.60")
+)
+
+AUDIO_AI_MIN_VOTE_RATIO = float(
+    os.getenv("AUDIO_AI_MIN_VOTE_RATIO", "0.75")
 )
 
 AUDIO_MAX_CLIPPING_RATIO = float(
@@ -575,6 +579,7 @@ def _build_detection_result(
 
     if detector_type == "ai":
         suspicious_prediction = "AI"
+        authentic_prediction = "HUMAN"
         suspicious_threshold = (
             AUDIO_AI_THRESHOLD
         )
@@ -585,9 +590,13 @@ def _build_detection_result(
             "voz generada mediante IA, TTS "
             "o clonación de voz"
         )
+        minimum_suspicious_vote_ratio = (
+            AUDIO_AI_MIN_VOTE_RATIO
+        )
 
     else:
         suspicious_prediction = "DEEPFAKE"
+        authentic_prediction = "REAL"
         suspicious_threshold = (
             AUDIO_DEEPFAKE_THRESHOLD
         )
@@ -598,11 +607,14 @@ def _build_detection_result(
             "voz falsa, manipulada "
             "o suplantada"
         )
+        minimum_suspicious_vote_ratio = (
+            AUDIO_MIN_VOTE_RATIO
+        )
 
     if (
         fake_score >= suspicious_threshold
         and fake_vote_ratio
-        >= AUDIO_MIN_VOTE_RATIO
+        >= minimum_suspicious_vote_ratio
     ):
         prediction = suspicious_prediction
         confidence = fake_score
@@ -613,7 +625,7 @@ def _build_detection_result(
         and real_vote_ratio
         >= AUDIO_MIN_VOTE_RATIO
     ):
-        prediction = "REAL"
+        prediction = authentic_prediction
         confidence = real_score
         raw_label = "real"
 
@@ -627,7 +639,7 @@ def _build_detection_result(
 
     probabilities = {
         suspicious_prediction: fake_score,
-        "REAL": real_score,
+        authentic_prediction: real_score,
     }
 
     evidence = [
@@ -668,7 +680,7 @@ def _build_detection_result(
         ),
         "real_threshold": real_threshold,
         "minimum_vote_ratio": (
-            AUDIO_MIN_VOTE_RATIO
+            minimum_suspicious_vote_ratio
         ),
         "chunk_seconds": (
             AUDIO_CHUNK_SECONDS

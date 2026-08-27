@@ -331,137 +331,89 @@ def analyze_image_deepfake(
         image
     ).convert("RGB")
 
-    face_image, quality_metadata, quality_error = (
-        _prepare_face(rgb_image)
-    )
-
-    if face_image is None:
-        return _build_inconclusive_result(
-            image=rgb_image,
-            reason=(
-                quality_error
-                or "La imagen no cumple las condiciones mínimas."
-            ),
-            metadata=quality_metadata,
-        )
-
     processor, model, device = (
         load_image_deepfake_components()
     )
 
-    variant_results: list[dict[str, Any]] = []
+    rgb_array = np.asarray(rgb_image)
+    gray = cv2.cvtColor(rgb_array, cv2.COLOR_RGB2GRAY)
+    cascade_path = (
+        cv2.data.haarcascades
+        + "haarcascade_frontalface_default.xml"
+    )
+    face_detector = cv2.CascadeClassifier(cascade_path)
+    faces = face_detector.detectMultiScale(
+        gray,
+        scaleFactor=1.1,
+        minNeighbors=5,
+        minSize=(64, 64),
+    )
 
-    for variant_name, variant_image in _create_variants(
-        face_image
-    ):
-        probabilities, raw_label = _predict_probabilities(
-            image=variant_image,
+    if len(faces) == 0:
+        return _build_inconclusive_result(
+            image=rgb_image,
+            reason=(
+                "No se detectó un rostro frontal para analizar "
+                "posibles manipulaciones faciales."
+            ),
+            metadata={"faces_detected": 0},
+        )
+
+    face_results: list[dict[str, Any]] = []
+
+    for face_index, (x, y, width, height) in enumerate(faces, 1):
+        margin = int(max(width, height) * 0.30)
+        x1 = max(0, int(x) - margin)
+        y1 = max(0, int(y) - margin)
+        x2 = min(rgb_image.width, int(x + width) + margin)
+        y2 = min(rgb_image.height, int(y + height) + margin)
+        face_crop = rgb_image.crop((x1, y1, x2, y2))
+
+        face_probabilities, face_raw_label = _predict_probabilities(
+            image=face_crop,
             processor=processor,
             model=model,
             device=device,
         )
-
-        variant_results.append(
+        face_results.append(
             {
-                "variant": variant_name,
-                "raw_label": raw_label,
-                "FAKE": float(
-                    probabilities.get("FAKE", 0.0)
-                ),
-                "REAL": float(
-                    probabilities.get("REAL", 0.0)
-                ),
+                "face_index": face_index,
+                "box": [x1, y1, x2, y2],
+                "raw_label": face_raw_label,
+                "FAKE": float(face_probabilities.get("FAKE", 0.0)),
+                "REAL": float(face_probabilities.get("REAL", 0.0)),
             }
         )
 
-    fake_values = [
-        result["FAKE"]
-        for result in variant_results
+    average_fake = float(np.mean([item["FAKE"] for item in face_results]))
+    average_real = float(np.mean([item["REAL"] for item in face_results]))
+    probabilities = {"FAKE": average_fake, "REAL": average_real}
+
+    if average_fake > average_real:
+        prediction = "FAKE"
+        raw_label = "Fake"
+        confidence = average_fake
+    else:
+        prediction = "REAL"
+        raw_label = "Real"
+        confidence = average_real
+
+    evidence = [
+        f"Se analizaron {len(face_results)} rostros detectados.",
+        "Cada rostro se recortó con margen y se procesó con la "
+        "normalización del checkpoint Celeb-DF.",
+        f"Probabilidad media {prediction}: {confidence:.2f}%.",
+        "La salida es probabilística y no constituye una prueba "
+        "forense definitiva.",
     ]
-    real_values = [
-        result["REAL"]
-        for result in variant_results
-    ]
-
-    average_fake = float(np.mean(fake_values))
-    average_real = float(np.mean(real_values))
-
-    fake_votes = sum(
-        value_fake > value_real
-        for value_fake, value_real
-        in zip(fake_values, real_values)
-    )
-
-    real_votes = len(variant_results) - fake_votes
-
-    probabilities = {
-        "FAKE": average_fake,
-        "REAL": average_real,
-    }
 
     metadata = {
         "image_width": rgb_image.width,
         "image_height": rgb_image.height,
-        **quality_metadata,
-        "quality_ok": True,
-        "quality_reason": "Calidad facial suficiente.",
-        "fake_threshold": FAKE_THRESHOLD,
-        "real_threshold": REAL_THRESHOLD,
-        "variant_results": variant_results,
-        "fake_votes": fake_votes,
-        "real_votes": real_votes,
+        "faces_detected": len(face_results),
+        "inference_strategy": "face_crops_native_argmax",
+        "face_results": face_results,
     }
-
-    if (
-        average_fake >= FAKE_THRESHOLD
-        and fake_votes == len(variant_results)
-    ):
-        prediction = "FAKE"
-        confidence = average_fake
-        raw_label = "fake"
-
-        evidence = [
-            "Se detectó un único rostro con calidad suficiente.",
-            "Las tres variantes del rostro coincidieron en la "
-            "clasificación FAKE.",
-            f"Probabilidad media FAKE: {average_fake:.2f}%.",
-            "La salida sigue siendo probabilística y no constituye "
-            "una prueba forense definitiva.",
-        ]
-
-    elif (
-        average_real >= REAL_THRESHOLD
-        and real_votes >= 2
-    ):
-        prediction = "REAL"
-        confidence = average_real
-        raw_label = "real"
-
-        evidence = [
-            "Se detectó un único rostro con calidad suficiente.",
-            "La mayoría de las variantes coincidió en la "
-            "clasificación REAL.",
-            f"Probabilidad media REAL: {average_real:.2f}%.",
-            "La salida sigue siendo probabilística y no constituye "
-            "una prueba forense definitiva.",
-        ]
-
-    else:
-        reason = (
-            "Las variantes analizadas no alcanzaron un consenso "
-            "suficiente para clasificar la imagen como REAL o FAKE."
-        )
-
-        return _build_inconclusive_result(
-            image=rgb_image,
-            reason=reason,
-            metadata=metadata,
-            probabilities=probabilities,
-            confidence=max(
-                average_fake,
-                average_real,
-            ),
-        )
 
     return DetectionResult(
         prediction=prediction,

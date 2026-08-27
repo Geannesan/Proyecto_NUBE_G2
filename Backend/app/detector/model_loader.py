@@ -17,12 +17,12 @@ from transformers import (
 
 IMAGE_AI_MODEL_NAME = os.getenv(
     "IMAGE_AI_MODEL_NAME",
-    "Ateeqq/ai-vs-human-image-detector",
+    "buildborderless/CommunityForensics-DeepfakeDet-ViT",
 )
 
 IMAGE_DEEPFAKE_MODEL_NAME = os.getenv(
     "IMAGE_DEEPFAKE_MODEL_NAME",
-    "prithivMLmods/deepfake-detector-model-v1",
+    "fabar1/vit-detection-celebdf-deepfake",
 )
 
 
@@ -34,14 +34,22 @@ IMAGE_DEEPFAKE_MODEL_NAME = os.getenv(
 # voz humana frente a voz generada por IA/TTS/voice cloning.
 AUDIO_AI_MODEL_NAME = os.getenv(
     "AUDIO_AI_MODEL_NAME",
-    "garystafford/wav2vec2-deepfake-voice-detector",
+    "Dax99993/deepfake-spanish-wav2vec2-linear-augmented",
 )
 
 # AUDIO + DEEPFAKE:
 # voz auténtica frente a voz falsa/manipulada/spoof.
 AUDIO_DEEPFAKE_MODEL_NAME = os.getenv(
     "AUDIO_DEEPFAKE_MODEL_NAME",
-    "MelodyMachine/Deepfake-audio-detection-V2",
+    "Dax99993/deepfake-spanish-wav2vec2-linear-augmented",
+)
+
+# El checkpoint en español publica los pesos y config.json, pero no
+# incluye preprocessor_config.json. Se reutiliza el extractor acústico
+# de su checkpoint base, que emplea la misma arquitectura Wav2Vec2.
+AUDIO_FEATURE_EXTRACTOR_NAME = os.getenv(
+    "AUDIO_FEATURE_EXTRACTOR_NAME",
+    "Gustking/wav2vec2-large-xlsr-deepfake-audio-classification",
 )
 
 
@@ -105,6 +113,7 @@ def _prepare_image_model(
 
 def _prepare_audio_model(
     model_name: str,
+    feature_extractor_name: str = AUDIO_FEATURE_EXTRACTOR_NAME,
 ):
     """
     Carga únicamente el extractor acústico y el clasificador.
@@ -112,7 +121,7 @@ def _prepare_audio_model(
     """
 
     feature_extractor = AutoFeatureExtractor.from_pretrained(
-        model_name,
+        feature_extractor_name,
         **_load_kwargs(),
     )
 
@@ -145,14 +154,16 @@ def load_image_deepfake_components():
 @lru_cache(maxsize=1)
 def load_audio_ai_components():
     return _prepare_audio_model(
-        AUDIO_AI_MODEL_NAME
+        AUDIO_AI_MODEL_NAME,
+        AUDIO_FEATURE_EXTRACTOR_NAME,
     )
 
 
 @lru_cache(maxsize=1)
 def load_audio_deepfake_components():
     return _prepare_audio_model(
-        AUDIO_DEEPFAKE_MODEL_NAME
+        AUDIO_DEEPFAKE_MODEL_NAME,
+        AUDIO_FEATURE_EXTRACTOR_NAME,
     )
 
 

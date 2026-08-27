@@ -40,6 +40,7 @@ def normalize_ai_label(label: str) -> str:
         token in value
         for token in (
             "human",
+            "hum",
             "real",
             "natural",
             "authentic",
@@ -70,39 +71,60 @@ def analyze_image_ai(
     with torch.inference_mode():
         outputs = model(**inputs)
 
-    probabilities_tensor = torch.softmax(
-        outputs.logits,
-        dim=-1,
-    )[0]
+    # Community Forensics usa un único logit: sigmoid(logit) es la
+    # probabilidad de imagen generada. Los clasificadores anteriores
+    # usaban dos logits y softmax, por lo que se soportan ambos formatos.
+    if outputs.logits.shape[-1] == 1:
+        ai_probability = float(
+            torch.sigmoid(outputs.logits)[0, 0].item()
+            * 100
+        )
+        human_probability = 100.0 - ai_probability
+        normalized_probabilities = {
+            "AI": ai_probability,
+            "HUMAN": human_probability,
+        }
 
-    predicted_index = int(
-        probabilities_tensor.argmax().item()
-    )
+        if ai_probability > human_probability:
+            prediction = "AI"
+            confidence = ai_probability
+            raw_label = "generated"
+        else:
+            prediction = "HUMAN"
+            confidence = human_probability
+            raw_label = "real"
+    else:
+        probabilities_tensor = torch.softmax(
+            outputs.logits,
+            dim=-1,
+        )[0]
 
-    raw_label = _label_from_config(
-        model,
-        predicted_index,
-    )
-
-    prediction = normalize_ai_label(raw_label)
-
-    normalized_probabilities: dict[str, float] = defaultdict(float)
-
-    for index, probability in enumerate(
-        probabilities_tensor
-    ):
-        label = normalize_ai_label(
-            _label_from_config(model, index)
+        predicted_index = int(
+            probabilities_tensor.argmax().item()
         )
 
-        normalized_probabilities[label] += (
-            float(probability.item()) * 100
+        raw_label = _label_from_config(
+            model,
+            predicted_index,
         )
 
-    confidence = float(
-        probabilities_tensor[predicted_index].item()
-        * 100
-    )
+        prediction = normalize_ai_label(raw_label)
+        normalized_probabilities = defaultdict(float)
+
+        for index, probability in enumerate(
+            probabilities_tensor
+        ):
+            label = normalize_ai_label(
+                _label_from_config(model, index)
+            )
+            normalized_probabilities[label] += (
+                float(probability.item()) * 100
+            )
+
+        confidence = float(
+            probabilities_tensor[predicted_index].item()
+            * 100
+        )
 
     evidence = [
         "Clasificación mediante un modelo de visión entrenado "
