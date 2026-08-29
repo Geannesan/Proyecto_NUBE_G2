@@ -1,33 +1,56 @@
 services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: deepfakeshield
+      POSTGRES_USER: deepfakeshield
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-deepfakeshield_dev}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U deepfakeshield -d deepfakeshield"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
   backend:
     build:
       context: ./Backend
       dockerfile: Dockerfile
 
-    container_name: deepfakeshield-backend
-
-    working_dir: /app
-
     ports:
       - "8000:8000"
-
     volumes:
-      - ./Backend:/app
       - huggingface-cache:/root/.cache/huggingface
+      - uploads-data:/app/uploads
 
     env_file:
       - .env
+    environment:
+      DATABASE_URL: postgresql+psycopg://deepfakeshield:${POSTGRES_PASSWORD:-deepfakeshield_dev}@postgres:5432/deepfakeshield
+      CORS_ORIGINS: http://localhost:8080
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health')"]
+      interval: 30s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
 
-    command:
-      - uvicorn
-      - main:app
-      - --host
-      - 0.0.0.0
-      - --port
-      - "8000"
-      - --reload
-
+  frontend:
+    build:
+      context: ./Frontend
+      dockerfile: Dockerfile
+    ports:
+      - "8080:80"
+    depends_on:
+      backend:
+        condition: service_healthy
     restart: unless-stopped
 
 volumes:
   huggingface-cache:
+  postgres-data:
+  uploads-data:
