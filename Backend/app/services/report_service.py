@@ -1,15 +1,9 @@
-import os
-from pathlib import Path
+from io import BytesIO
 
 from reportlab.lib.pagesizes import A4
 from reportlab.pdfgen import canvas
 
 from app.database.models import Analysis
-
-
-REPORTS_DIR = Path(
-    os.getenv("REPORTS_DIR", "reports")
-).resolve()
 
 
 def _write_wrapped_text(
@@ -47,19 +41,10 @@ def _write_wrapped_text(
 
 def create_pdf_report(
     record: Analysis,
-) -> Path:
-    REPORTS_DIR.mkdir(
-        parents=True,
-        exist_ok=True,
-    )
-
-    output_path = (
-        REPORTS_DIR
-        / f"analysis_{record.id}.pdf"
-    )
-
+) -> bytes:
+    output = BytesIO()
     pdf = canvas.Canvas(
-        str(output_path),
+        output,
         pagesize=A4,
     )
 
@@ -202,6 +187,30 @@ def create_pdf_report(
             f"Content Credentials: {credentials_status}",
         )
 
+    technical = metadata.get("technical_metadata", {})
+    if technical:
+        y -= 22
+        pdf.setFont("Helvetica-Bold", 12)
+        pdf.drawString(x, y, "Metadatos técnicos")
+        y -= 17
+        pdf.setFont("Helvetica", 9)
+        technical_fields = [
+            ("Formato", technical.get("format") or technical.get("format_name")),
+            ("Resolución", (
+                f"{technical.get('width')}x{technical.get('height')}"
+                if technical.get("width") and technical.get("height") else None
+            )),
+            ("Duración", technical.get("duration")),
+            ("Bitrate", technical.get("bit_rate")),
+            ("EXIF presente", technical.get("exif_present")),
+            ("Software declarado", technical.get("software")),
+            ("Pistas", len(technical.get("streams", [])) if technical.get("streams") else None),
+        ]
+        for label, value in technical_fields:
+            if value is not None:
+                pdf.drawString(x + 15, y, f"{label}: {value}")
+                y -= 13
+
     y -= 18
     pdf.setFont("Helvetica-Oblique", 8)
 
@@ -221,5 +230,4 @@ def create_pdf_report(
     )
 
     pdf.save()
-
-    return output_path
+    return output.getvalue()

@@ -1,4 +1,5 @@
 from pathlib import Path
+from hashlib import sha256
 from time import perf_counter
 from typing import Literal
 
@@ -29,6 +30,9 @@ from app.services.file_service import (
     delete_saved_upload,
     save_upload,
 )
+from app.services.metadata_service import inspect_technical_metadata
+from app.services.provenance_service import inspect_content_credentials
+from app.services.validation_service import get_axis_validation
 
 
 MediaType = Literal[
@@ -42,6 +46,45 @@ DetectorType = Literal[
     "deepfake",
     "comprehensive",
 ]
+
+
+def _file_sha256(path: Path) -> str:
+    digest = sha256()
+    with path.open("rb") as source:
+        for chunk in iter(lambda: source.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def _enrich_individual_result(
+    *,
+    result,
+    path: Path,
+    media_type: MediaType,
+    detector_type: DetectorType,
+) -> None:
+    """Añade trazabilidad sin alterar la decisión del modelo."""
+    axis = "generation" if detector_type == "ai" else "manipulation"
+    validation = get_axis_validation(media_type, axis)
+    result.metadata.update(
+        {
+            "technical_metadata": inspect_technical_metadata(path, media_type),
+            "integrity": {
+                "sha256": _file_sha256(path),
+                "content_credentials": inspect_content_credentials(path),
+            },
+            "validation": {
+                "axis": axis,
+                "calibrated": bool(validation),
+                "metrics": validation,
+                "message": (
+                    "Métricas cargadas desde un conjunto etiquetado."
+                    if validation
+                    else "Requiere evaluación con ground truth independiente."
+                ),
+            },
+        }
+    )
 
 
 def normalize_detector_type(
@@ -171,6 +214,14 @@ async def analyze_upload(
             raise ValueError(
                 "Tipo multimedia no soportado: "
                 f"{media_type}"
+            )
+
+        if normalized_detector != "comprehensive":
+            _enrich_individual_result(
+                result=result,
+                path=saved.path,
+                media_type=media_type,
+                detector_type=normalized_detector,
             )
 
         processing_time_ms = round(
