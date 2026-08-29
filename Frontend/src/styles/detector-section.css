@@ -1,0 +1,292 @@
+/* ==========================================================================
+   ENCABEZADO, SELECTOR Y CARGA
+   ========================================================================== */
+.detect-editorial-intro {
+  display: flex;
+  width: min(100%, 860px);
+  margin: 0 auto 30px;
+  padding: 36px 20px 40px;
+  flex-direction: column;
+  align-items: center;
+  border-bottom: 1px solid var(--lab-amber);
+  text-align: center;
+}
+
+.detect-editorial-intro h1 {
+  width: 100%;
+  margin: 0;
+  color: var(--lab-ivory);
+  font-family: 'Cormorant Garamond', Georgia, serif;
+  font-size: clamp(3.2rem, 7.5vw, 6.2rem);
+  font-weight: 500;
+  letter-spacing: -.055em;
+  line-height: .86;
+}
+
+.detect-editorial-intro h1 em { color: var(--lab-amber); font-weight: 500; }
+.detect-editorial-intro p {
+  width: min(100%, 560px);
+  margin: 22px auto 0;
+  color: var(--lab-muted);
+  font-size: .95rem;
+  line-height: 1.55;
+}
+
+.view-detect .detector-shell { width: min(100%, 900px); }
+.view-detect .media-switch, .view-detect .sub-switch {
+  border-color: var(--lab-line);
+  border-radius: 0;
+  background: var(--lab-surface);
+  box-shadow: none;
+}
+.view-detect .media-switch button, .view-detect .sub-switch button { color: var(--lab-ivory); }
+.view-detect .media-switch button.active { color: var(--lab-bg); background: var(--lab-amber); }
+.view-detect .sub-switch button.active { color: var(--lab-ivory); background: var(--lab-moss); }
+
+.view-detect .metal-panel {
+  padding: 58px 28px 28px;
+  border: 1px solid var(--lab-amber);
+  border-radius: 0;
+  background: var(--lab-surface);
+  box-shadow: 12px 12px 0 var(--lab-burgundy);
+}
+.view-detect .metal-panel::before { border-color: var(--lab-line); border-radius: 0; }
+.view-detect .drop-area {
+  border: 1px solid var(--lab-line);
+  border-radius: 0;
+  color: var(--lab-ivory);
+  background: var(--lab-bg);
+  box-shadow: none;
+}
+.view-detect .drop-area h2, .view-detect .drop-area > p { color: var(--lab-ivory); }
+.view-detect .upload-icon { color: var(--lab-amber); }
+.view-detect .file-name { color: var(--lab-amber); }
+.view-detect .change-file-button { border-color: var(--lab-line); color: var(--lab-ivory); background: var(--lab-surface); }
+.view-detect .preview-image {
+  width: auto;
+  max-width: min(100%, 620px);
+  height: auto;
+  max-height: 340px;
+  border: 1px solid var(--lab-border);
+  border-radius: 0;
+  box-shadow: 10px 10px 0 rgba(38, 50, 72, .75);
+  object-fit: contain;
+}
+.view-detect .preview-video { width: auto; max-width: 100%; height: auto; border: 1px solid var(--lab-border); border-radius: 0; object-fit: contain; }
+.view-detect .primary-button { border-color: var(--lab-amber); color: var(--lab-ivory); background: var(--lab-burgundy); }
+.view-detect .selected-mode { border-color: var(--lab-line); border-radius: 0; color: var(--lab-ivory); background: var(--lab-surface); }
+.view-detect .selected-mode span { border-radius: 0; color: var(--lab-bg); background: var(--lab-amber); }
+.view-detect .selected-mode strong { color: var(--lab-ivory); }
+
+.view-detect .processing-card, .view-detect .result-card {
+  border-color: var(--lab-line);
+  border-radius: 0;
+  color: var(--lab-ivory);
+  background: var(--lab-surface);
+  box-shadow: 12px 12px 0 rgba(56,19,28,.7);
+}
+.view-detect .result-card.fake { border-color: var(--lab-ai-border); border-top-color: var(--lab-ai-text); background: linear-gradient(180deg, var(--lab-ai-bg), var(--lab-surface)); }
+.view-detect .result-card.real { border-color: var(--lab-human-border); border-top-color: var(--lab-human-text); background: linear-gradient(180deg, var(--lab-human-bg), var(--lab-surface)); }
+.view-detect .result-card.inconclusive { border-color: var(--lab-warn-border); border-top-color: var(--lab-warn-text); background: linear-gradient(180deg, var(--lab-warn-bg), var(--lab-surface)); }
+.view-detect .result-heading h2, .view-detect .confidence-label strong { color: var(--lab-ivory); }
+.view-detect .eyebrow, .view-detect .confidence-label { color: var(--lab-amber); }
+.view-detect .confidence-ring { background: radial-gradient(circle closest-side, var(--lab-surface) 72%, transparent 74% 99%), conic-gradient(var(--lab-amber) var(--confidence), rgba(234,230,223,.12) 0); }
+.view-detect .confidence-ring span { color: var(--lab-text-primary); }
+.view-detect .confidence-progress { background: linear-gradient(90deg, var(--lab-burgundy), var(--lab-moss), var(--lab-amber)); box-shadow: none; }
+
+.view-detect .analysis-insight-dashboard { border-color: var(--lab-line); border-radius: 0; color: var(--lab-ivory); background: var(--lab-bg); }
+.view-detect .analysis-kpi-grid > div, .view-detect .analysis-bars-card,
+.view-detect .analysis-context-card, .view-detect .analysis-verdict-copy,
+.view-detect .axis-result-card, .view-detect .analysis-trace-grid > div { border-color: var(--lab-line); background: var(--lab-surface); }
+.view-detect .analysis-dashboard-heading h3, .view-detect .analysis-kpi-grid strong,
+.view-detect .analysis-bars-card h4, .view-detect .analysis-verdict-copy h4,
+.view-detect .axis-card-heading h4, .view-detect .axis-card-heading > strong,
+.view-detect .analysis-context-card > strong, .view-detect .analysis-trace-grid strong { color: var(--lab-ivory); }
+.view-detect .current-file-badge { border-color: var(--lab-amber); color: var(--lab-amber); background: var(--lab-burgundy); }
+.view-detect .analysis-score-track { background: rgba(234,230,223,.12); }
+.view-detect .analysis-score-track i { background: var(--lab-accent-primary); }
+.view-detect .compact-evidence i { color: var(--lab-human-text); }
+.view-detect .matrix-status,
+.view-detect .matrix-status.executed,
+.view-detect .matrix-status.observed,
+.view-detect .matrix-status.consistent { border: 1px solid var(--lab-human-border); color: var(--lab-human-text); background: var(--lab-human-bg); }
+
+.view-detect .result-technologies, .view-detect .result-technologies.video,
+.view-detect .forensic-metadata-panel { border-color: var(--lab-line); border-radius: 0; color: var(--lab-ivory); background: var(--lab-burgundy); }
+
+/* ==========================================================================
+   SISTEMA AUTO-RELLENABLE GLOBAL (ELIMINA HUECOS EN TODAS LAS RUTAS)
+   ========================================================================== */
+
+/* 1. Dashboard Superior */
+.view-detect .analysis-insight-dashboard {
+  align-items: stretch !important;
+}
+
+/* Fuerza a que ambas tarjetas tengan la misma altura y llenen el espacio */
+.view-detect .analysis-bars-card,
+.view-detect .analysis-context-card {
+  display: flex !important;
+  flex-direction: column !important;
+  justify-content: space-between !important;
+  height: 100% !important;
+  min-height: 240px !important;    /* Misma altura base uniforme */
+  box-sizing: border-box !important;
+  margin: 0 !important;
+}
+
+/* Alinea el contenido interno de la tarjeta de Cobertura */
+.view-detect .analysis-context-card > strong,
+.view-detect .analysis-context-card h3 {
+  margin: 0.75rem 0 !important;
+}
+
+.view-detect .analysis-context-card p {
+  margin: 0 !important;
+  margin-top: auto !important;     /* Empuja el texto inferior a la misma base */
+}
+
+/* Fila 2: Interpretación (100% Ancho) */
+.view-detect .analysis-verdict-copy {
+  flex: 1 1 100% !important;
+  width: 100% !important;
+  box-sizing: border-box !important;
+  padding: 1.75rem !important;
+}
+
+/* Fila 3: Tarjetas de Ejes (Generación AI / Deepfake) */
+.view-detect .axis-result-card,
+.view-detect [class*="axis-result"] {
+  flex: 1 1 100% !important;
+  width: 100% !important;
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 1.25rem !important;
+  box-sizing: border-box !important;
+  padding: 1.75rem 2rem !important;
+  margin: 0 !important;
+}
+
+.view-detect .axis-result-card .axis-card-heading,
+.view-detect .axis-result-card > div:first-child {
+  display: flex !important;
+  justify-content: space-between !important;
+  align-items: center !important;
+  width: 100% !important;
+  border-bottom: 1px solid var(--lab-border, rgba(255, 255, 255, 0.08)) !important;
+  padding-bottom: 0.75rem !important;
+}
+
+.view-detect .axis-result-card ul,
+.view-detect .axis-result-card .compact-evidence,
+.view-detect .axis-result-card > div:last-child {
+  display: flex !important;
+  flex-wrap: wrap !important;
+  gap: 1.25rem !important;
+  width: 100% !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  list-style: none !important;
+}
+
+.view-detect .axis-result-card li,
+.view-detect .axis-result-card p,
+.view-detect .axis-result-card .compact-evidence > div {
+  flex: 1 1 calc(33.333% - 1.25rem) !important;
+  min-width: 220px !important;
+  font-size: 0.875rem !important;
+  line-height: 1.55 !important;
+  margin: 0 !important;
+}
+
+/* Fila 4: 4 Metadatos técnicos */
+.view-detect .analysis-trace-grid {
+  flex: 1 1 100% !important;
+  display: flex !important;
+  flex-wrap: wrap !important;
+  gap: 1rem !important;
+  width: 100% !important;
+  box-sizing: border-box !important;
+  margin-top: 0.5rem !important;
+}
+
+.view-detect .analysis-trace-grid > div {
+  flex: 1 1 calc(25% - 1rem) !important;
+  min-width: 170px !important;
+  min-height: 80px !important;
+  display: flex !important;
+  flex-direction: column !important;
+  justify-content: center !important;
+  box-sizing: border-box !important;
+  padding: 1rem !important;
+  overflow: hidden !important;
+}
+
+.view-detect .analysis-trace-grid strong {
+  font-family: monospace !important;
+  font-size: 0.85rem !important;
+  white-space: nowrap !important;
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+}
+
+/* ==========================================================================
+   2. EVIDENCIA TÉCNICA Y KPIS (QUITA HUECOS EN 3, 5 O 7 TARJETAS)
+   ========================================================================== */
+
+/* Contenedores de evidencias y KPIs */
+.view-detect .technology-evidence-grid,
+.view-detect .forensic-kpis,
+.view-detect [class*="evidence-grid"],
+.view-detect [class*="forensic-kpis"] {
+  display: flex !important;
+  flex-wrap: wrap !important;
+  gap: 1.25rem !important;
+  width: 100% !important;
+  margin-top: 1.5rem !important;
+  box-sizing: border-box !important;
+}
+
+/* Cada tarjeta ocupa el 50% de la fila */
+.view-detect .technology-evidence-grid article,
+.view-detect .forensic-kpis article,
+.view-detect [class*="evidence-grid"] article,
+.view-detect [class*="forensic-kpis"] article,
+.view-detect [class*="evidence-grid"] > div,
+.view-detect [class*="forensic-kpis"] > div {
+  flex: 1 1 calc(50% - 1.25rem) !important;
+  min-width: 320px !important;
+  box-sizing: border-box !important;
+}
+
+/* SI QUEDA UNA TARJETA SOLA (IMPAR), SE EXPANDE AL 100% AUTOMÁTICAMENTE */
+.view-detect .technology-evidence-grid article:last-child:nth-child(odd),
+.view-detect .forensic-kpis article:last-child:nth-child(odd),
+.view-detect [class*="evidence-grid"] article:last-child:nth-child(odd),
+.view-detect [class*="forensic-kpis"] article:last-child:nth-child(odd),
+.view-detect [class*="evidence-grid"] > div:last-child:nth-child(odd),
+.view-detect [class*="forensic-kpis"] > div:last-child:nth-child(odd) {
+  flex: 1 1 100% !important;
+  width: 100% !important;
+}
+
+/* Estilos de textos */
+.view-detect .technology-evidence-grid article > span, .view-detect .technology-evidence-grid h3,
+.view-detect .technology-evidence-grid p, .view-detect .models-used,
+.view-detect .forensic-metadata-panel h2, .view-detect .forensic-metadata-panel h3 { color: var(--lab-ivory); }
+
+@media (max-width: 768px) {
+  .view-detect .analysis-bars-card,
+  .view-detect .analysis-context-card,
+  .view-detect .technology-evidence-grid article,
+  .view-detect .forensic-kpis article,
+  .view-detect .analysis-trace-grid > div {
+    flex: 1 1 100% !important;
+  }
+}
+
+@media (max-width: 680px) {
+  .detect-editorial-intro { padding-inline: 4px; }
+  .view-detect .metal-panel { padding-inline: 15px; }
+  .view-detect .preview-image { width: auto; max-width: 100%; }
+}

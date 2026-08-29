@@ -1,0 +1,41 @@
+/* Historial, expediente y API. */
+.view-history .history-workspace, .view-case .case-viewer, .view-developers .developer-portal {
+  border-color: var(--lab-line);
+  border-radius: 0;
+  color: var(--lab-ivory);
+  background: var(--lab-surface);
+}
+.view-history .workspace-heading h2, .view-case .case-hero h2,
+.view-developers .workspace-heading h2 { color: var(--lab-ivory); }
+.view-history .workspace-heading p, .view-case .case-hero p,
+.view-developers .workspace-heading p { color: var(--lab-muted); }
+.view-history .section-eyebrow, .view-case .section-eyebrow,
+.view-developers .section-eyebrow { color: var(--lab-amber); }
+.view-history .history-toolbar { border-color: var(--lab-line); background: var(--lab-burgundy); }
+.view-history .history-toolbar input, .view-history .history-toolbar select,
+.view-history .history-toolbar button { border-color: var(--lab-line); color: var(--lab-ivory); background: var(--lab-bg); }
+.view-history .audit-table { border-color: var(--lab-line); }
+.view-history .audit-head { color: var(--lab-text-primary); background: var(--lab-burgundy); }
+.view-history .audit-row { border-color: var(--lab-line); color: var(--lab-ivory); }
+.view-history .audit-row:hover { background: #252a30; }
+.view-history .audit-row > span, .view-history .audit-row small { color: var(--lab-muted); }
+.view-history .audit-row button, .view-history .audit-row a,
+.view-case .case-actions button, .view-case .case-actions a { border: 1px solid var(--lab-border); border-radius: 999px; color: var(--lab-accent-primary); background: rgba(56, 189, 248, .06); }
+.view-case .back-action { color: var(--lab-amber); }
+.view-case .case-verdict { border-color: var(--lab-amber); color: var(--lab-bg); background: var(--lab-amber); }
+.view-case .case-facts, .view-case .case-facts article { border-color: var(--lab-line); }
+.view-case .case-facts article, .view-case .case-facts article:nth-child(2) { color: var(--lab-ivory); background: var(--lab-bg); }
+.view-case .case-facts article:last-child { color: var(--lab-ivory); background: var(--lab-burgundy); }
+.view-case .case-facts span, .view-case .case-facts strong { color: var(--lab-ivory); }
+.view-case .evidence-matrix { border-color: var(--lab-line); }
+.view-case .evidence-matrix-head { color: var(--lab-text-primary); background: var(--lab-burgundy); }
+.view-case .evidence-matrix-row { border-color: var(--lab-line); color: var(--lab-ivory); }
+.view-case .evidence-matrix-row p { color: var(--lab-muted); }
+.view-case .case-data-notice, .view-developers .integration-note { border-color: var(--lab-line); color: var(--lab-ivory); background: var(--lab-burgundy); }
+.view-developers .api-live { border-color: var(--lab-border); color: var(--lab-accent-primary); background: rgba(56,189,248,.08); }
+.view-developers .developer-grid, .view-developers .developer-grid article { border-color: var(--lab-line); }
+.view-developers .developer-grid article, .view-developers .developer-grid article:nth-child(2) { color: var(--lab-ivory); background: var(--lab-bg); }
+.view-developers .developer-grid article:last-child { color: var(--lab-ivory); background: var(--lab-burgundy); }
+.view-developers .developer-grid article > span, .view-developers .developer-grid p,
+.view-developers .developer-grid a { color: var(--lab-ivory); }
+.view-developers .developer-grid a { border-color: var(--lab-amber); color: var(--lab-amber); }

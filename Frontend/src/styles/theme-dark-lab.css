@@ -1,0 +1,121 @@
+/* Tema compartido. Cambia aquí la paleta sin tocar componentes o secciones. */
+:root, .page {
+  --lab-bg: #0c1017;
+  --lab-surface: #151b26;
+  --lab-surface-elevated: #1e2638;
+  --lab-border: #263248;
+  --lab-text-primary: #f1f5f9;
+  --lab-text-secondary: #94a3b8;
+  --lab-text-muted: #64748b;
+  --lab-burgundy: #1a273a;
+  --lab-accent-primary: #38bdf8;
+  --lab-accent-editorial: #e2e8f0;
+  --lab-human-bg: rgba(16, 185, 129, .12);
+  --lab-human-border: rgba(16, 185, 129, .35);
+  --lab-human-text: #34d399;
+  --lab-ai-bg: rgba(244, 63, 94, .12);
+  --lab-ai-border: rgba(244, 63, 94, .35);
+  --lab-ai-text: #fb7185;
+  --lab-warn-bg: rgba(245, 158, 11, .12);
+  --lab-warn-border: rgba(245, 158, 11, .35);
+  --lab-warn-text: #fbbf24;
+  --lab-ivory: var(--lab-text-primary);
+  --lab-muted: var(--lab-text-secondary);
+  --lab-line: var(--lab-border);
+  --lab-moss: #065f46;
+  --lab-amber: var(--lab-accent-primary);
+}
+
+.view-home, .view-detect, .view-history, .view-case, .view-developers {
+  color: var(--lab-ivory);
+  background: var(--lab-bg);
+}
+
+/* Portada editorial: la identidad y las acciones conservan contraste AA. */
+.editorial-wordmark { border-color: var(--lab-line); color: rgba(241, 245, 249, .9); }
+.view-home .editorial-wordmark { font-size: clamp(3.2rem, 8.7vw, 7rem); }
+.hero-editorial-grid { border-color: var(--lab-line); }
+.hero-editorial-copy h1 { color: #f8fafc; }
+.hero-editorial-copy h1 em { color: var(--lab-human-text); }
+.hero-editorial-copy p { color: #94a3b8; }
+.hero-editorial-image { border-color: var(--lab-line); }
+.hero-editorial-image figcaption {
+  border-color: var(--lab-line);
+  color: #e2e8f0;
+  background: rgba(19, 24, 34, .9);
+}
+/* BOTÓN 1: Comenzar análisis (Fondo verde oscuro / texto claro) */
+.hero-actions button {
+  background: #0f3d32;                    /* Verde oscuro */
+  color: #d1fae5;                         /* Texto menta claro */
+  border: 1px solid #0f3d32;
+  border-radius: 9999px;
+  padding: 0.65rem 1.4rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.hero-actions button:hover {
+  background: #134e40;
+  border-color: #134e40;
+}
+
+/* BOTÓN 2: Ver investigaciones (INVERTIDO: Fondo claro / texto verde oscuro) */
+.hero-actions button.secondary {
+  background: #d1fae5 !important;         /* Fondo menta claro (invertido) */
+  color: #0f3d32 !important;              /* Texto verde oscuro (invertido) */
+  border: 1px solid #d1fae5 !important;
+  border-radius: 9999px !important;
+  font-weight: 700 !important;
+  box-shadow: 0 4px 14px rgba(209, 250, 229, 0.15);
+}
+
+.hero-actions button.secondary:hover {
+  background: #ffffff !important;
+  color: #064e3b !important;
+  border-color: #ffffff !important;
+}
+
+.view-home::before, .view-detect::before, .view-history::before,
+.view-case::before, .view-developers::before {
+  opacity: .11;
+  background-image:
+    linear-gradient(30deg, transparent 0 49%, rgba(217,180,143,.14) 49.5% 50%, transparent 50.5%),
+    linear-gradient(150deg, transparent 0 49%, rgba(46,74,62,.2) 49.5% 50%, transparent 50.5%);
+}
+
+.view-home .platform-nav, .view-detect .platform-nav, .view-history .platform-nav,
+.view-case .platform-nav, .view-developers .platform-nav {
+  border-color: var(--lab-line);
+  color: var(--lab-ivory);
+  background: rgba(20, 22, 25, .92);
+  box-shadow: 0 16px 45px rgba(0,0,0,.26);
+}
+
+.view-home .platform-nav button, .view-detect .platform-nav button,
+.view-history .platform-nav button, .view-case .platform-nav button,
+.view-developers .platform-nav button,
+.view-home .platform-nav .nav-brand, .view-detect .platform-nav .nav-brand,
+.view-history .platform-nav .nav-brand, .view-case .platform-nav .nav-brand,
+.view-developers .platform-nav .nav-brand { color: var(--lab-ivory); }
+
+.view-home .platform-nav > div button:hover, .view-home .platform-nav > div button.active,
+.view-detect .platform-nav > div button:hover, .view-detect .platform-nav > div button.active,
+.view-history .platform-nav > div button:hover, .view-history .platform-nav > div button.active,
+.view-case .platform-nav > div button:hover, .view-case .platform-nav > div button.active,
+.view-developers .platform-nav > div button:hover, .view-developers .platform-nav > div button.active {
+  color: var(--lab-bg);
+  background: var(--lab-amber);
+}
+
+.view-home .nav-brand .brand-icon, .view-detect .nav-brand .brand-icon,
+.view-history .nav-brand .brand-icon, .view-case .nav-brand .brand-icon,
+.view-developers .nav-brand .brand-icon { color: var(--lab-amber); filter: none; }
+
+.footer { border-color: var(--lab-line); background: rgba(20,22,25,.92); }
+.footer-links a { color: var(--lab-muted); }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { scroll-behavior: auto !important; }
+}
