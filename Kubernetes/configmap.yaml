@@ -1,0 +1,20 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: deepfakeshield-config
+  namespace: deepfakeshield
+data:
+  CORS_ORIGINS: "http://localhost,https://deepfakeshield.example.com"
+  MAX_UPLOAD_MB: "200"
+  UPLOAD_DIR: "/app/uploads"
+  HF_HOME: "/home/app/.cache/huggingface"
+  HF_LOCAL_ONLY: "false"
+  USE_CUDA: "false"
+  IMAGE_AI_MODEL_NAME: "buildborderless/CommunityForensics-DeepfakeDet-ViT"
+  IMAGE_DEEPFAKE_MODEL_NAME: "fabar1/vit-detection-celebdf-deepfake"
+  VIDEO_AI_MODEL_NAME: "umm-maybe/AI-image-detector"
+  VIDEO_AI_SECONDARY_MODEL_NAME: "buildborderless/CommunityForensics-DeepfakeDet-ViT"
+  VIDEO_DEEPFAKE_MODEL_NAME: "prithivMLmods/Deep-Fake-Detector-v2-Model"
+  AUDIO_AI_MODEL_NAME: "Dax99993/deepfake-spanish-wav2vec2-linear-augmented"
+  AUDIO_DEEPFAKE_MODEL_NAME: "MelodyMachine/Deepfake-audio-detection-V2"
+  AUDIO_FEATURE_EXTRACTOR_NAME: "Gustking/wav2vec2-large-xlsr-deepfake-audio-classification"
