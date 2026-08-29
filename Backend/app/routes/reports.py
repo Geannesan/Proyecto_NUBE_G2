@@ -1,17 +1,16 @@
-from pathlib import Path
+from io import BytesIO
 
 from fastapi import (
     APIRouter,
     Depends,
     HTTPException,
 )
-from fastapi.responses import FileResponse
+from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 
 from app.database.database import get_db
 from app.database.repositories import (
     get_analysis,
-    update_report_path,
 )
 from app.services.report_service import (
     create_pdf_report,
@@ -40,28 +39,14 @@ def download_report(
             detail="Análisis no encontrado.",
         )
 
-    report_path = (
-        Path(record.report_path)
-        if record.report_path
-        else None
-    )
-
-    if (
-        report_path is None
-        or not report_path.exists()
-    ):
-        report_path = create_pdf_report(record)
-
-        update_report_path(
-            db,
-            record,
-            str(report_path),
-        )
-
-    return FileResponse(
-        path=report_path,
+    report_bytes = create_pdf_report(record)
+    return StreamingResponse(
+        BytesIO(report_bytes),
         media_type="application/pdf",
-        filename=(
-            f"DeepFakeShield_{analysis_id}.pdf"
-        ),
+        headers={
+            "Content-Disposition": (
+                f'attachment; filename="DeepFakeShield_{analysis_id}.pdf"'
+            ),
+            "Cache-Control": "no-store",
+        },
     )
