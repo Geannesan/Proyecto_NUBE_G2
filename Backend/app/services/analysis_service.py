@@ -66,12 +66,107 @@ def _enrich_individual_result(
     """Añade trazabilidad sin alterar la decisión del modelo."""
     axis = "generation" if detector_type == "ai" else "manipulation"
     validation = get_axis_validation(media_type, axis)
+    technical = inspect_technical_metadata(path, media_type)
+    credentials = inspect_content_credentials(path)
+    technologies = [
+        {
+            "technology": "SHA-256",
+            "status": "executed",
+            "purpose": "Fijar la identidad binaria del archivo analizado.",
+            "observation": "Hash calculado sobre el archivo recibido.",
+        },
+        {
+            "technology": "C2PA / Content Credentials",
+            "status": (
+                "executed"
+                if credentials.get("status") != "sdk_unavailable"
+                else "unavailable"
+            ),
+            "purpose": "Examinar procedencia e integridad declaradas.",
+            "observation": credentials.get("message", "Sin observación."),
+        },
+        {
+            "technology": "Metadatos técnicos",
+            "status": "executed" if technical.get("status") != "unreadable" else "inconclusive",
+            "purpose": "Caracterizar formato, dimensiones, duración, códecs y etiquetas.",
+            "observation": (
+                f"Formato: {technical.get('format') or technical.get('format_name') or 'desconocido'}."
+            ),
+        },
+    ]
+    if media_type == "image":
+        forensic = technical.get("forensic_metadata", {})
+        stats = forensic.get("statistics", {})
+        binary = forensic.get("binary", {})
+        consistency = forensic.get("consistency", {})
+        technologies.extend([
+            {
+                "technology": "EXIF / IPTC / XMP",
+                "status": "executed",
+                "purpose": "Examinar captura, software, autoría y declaraciones editoriales.",
+                "observation": f"EXIF: {stats.get('exif_fields', 0)} campos; IPTC: {stats.get('iptc_fields', 0)}; XMP: {'presente' if stats.get('xmp_present') else 'ausente'}.",
+            },
+            {
+                "technology": "Estructura binaria JPEG",
+                "status": "executed" if technical.get("format") == "JPEG" else "not_applicable",
+                "purpose": "Extraer tablas DQT, marcadores APP, comentarios y señales de miniatura.",
+                "observation": f"DQT: {stats.get('dqt_tables', 0)}; APP: {stats.get('app_segments', 0)}; COM: {stats.get('binary_comments', 0)}; APP1 duplicado: {binary.get('duplicate_app1', False)}.",
+            },
+            {
+                "technology": "Cruce de consistencia forense",
+                "status": "executed",
+                "purpose": "Contrastar formato, extensión, relación de aspecto y tiempos declarados.",
+                "observation": f"Extensión coherente: {consistency.get('extension_consistent')}; ratio cercano: {consistency.get('nearest_standard_ratio', 'N/D')}; estado temporal: {consistency.get('temporal_status', 'N/D')}.",
+            },
+        ])
+    if media_type == "video":
+        technologies.extend([
+            {
+                "technology": "Muestreo temporal",
+                "status": "executed",
+                "purpose": "Cubrir distintos instantes del video.",
+                "observation": f"{result.metadata.get('sampled_frames', 0)} fotogramas muestreados; {result.metadata.get('valid_frames', 0)} evaluables.",
+            },
+            {
+                "technology": "Agregación temporal",
+                "status": "executed",
+                "purpose": "Combinar mediana y acuerdo entre fotogramas.",
+                "observation": f"Mediana de sospecha: {result.metadata.get('median_suspicious_score', 'N/D')}%.",
+            },
+        ])
+    if media_type == "audio":
+        technologies.append({
+            "technology": "Segmentación acústica",
+            "status": "executed",
+            "purpose": "Contrastar varios tramos de la señal.",
+            "observation": f"{result.metadata.get('chunk_count', 0)} segmentos analizados.",
+        })
+    if detector_type == "deepfake" and media_type in {"image", "video"}:
+        technologies.append({
+            "technology": "Detección facial OpenCV",
+            "status": "executed",
+            "purpose": "Verificar que existan regiones faciales evaluables.",
+            "observation": f"{result.metadata.get('faces_detected', result.metadata.get('valid_frames', 0))} candidatos/frames faciales detectados.",
+        })
+    technologies.insert(0, {
+        "technology": "Clasificador de IA",
+        "status": (
+            "not_executed"
+            if detector_type == "deepfake" and media_type == "image"
+            and not result.metadata.get("quality_ok", True)
+            else "executed"
+        ),
+        "purpose": "Estimar la clase solicitada mediante el checkpoint registrado.",
+        "observation": f"Modelo: {result.model_name}; resultado: {result.prediction}; score: {result.confidence:.2f}%.",
+    })
+
     result.metadata.update(
         {
-            "technical_metadata": inspect_technical_metadata(path, media_type),
+            "technology_evidence": technologies,
+            "technical_metadata": technical,
             "integrity": {
                 "sha256": _file_sha256(path),
-                "content_credentials": inspect_content_credentials(path),
+                "content_credentials": credentials,
             },
             "validation": {
                 "axis": axis,
