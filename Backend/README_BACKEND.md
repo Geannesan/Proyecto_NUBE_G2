@@ -1,37 +1,31 @@
-Actualización de modelos de imagen de DeepFakeShield
-AI Image Detector
-Ruta:
-`Backend/app/detector/image_ai_detector.py`
-Modelo:
-`Ateeqq/ai-vs-human-image-detector`
-Clases:
-AI
-REAL
-INCONCLUSIVE
-Analiza la imagen completa.
-Deepfake Detector
-Ruta:
-`Backend/app/detector/image_deepfake_detector.py`
-Modelo:
-`prithivMLmods/AI-vs-Deepfake-vs-Real-Siglip2`
-Clases:
-AI
-DEEPFAKE
-REAL
-INCONCLUSIVE
-Combina el análisis de la imagen completa con recortes faciales.
-Archivos que se reemplazan
-`Backend/app/detector/model_loader.py`
-`Backend/app/detector/image_ai_detector.py`
-`Backend/app/detector/image_deepfake_detector.py`
-`Backend/app/detector/analyzer.py`
-No se crean carpetas nuevas.
-Configuración
-Copie `ENV_AGREGAR.txt` dentro del archivo `.env` de la raíz.
-Reinicio
-Desde la raíz del proyecto:
-```powershell
-docker compose down
-docker compose up backend
-```
-No use `--build` salvo que cambie `requirements.txt`.
+# Backend DeepFakeShield
+
+## Rutas
+
+- `POST /api/v1/image/analyze`
+- `POST /api/v1/audio/analyze`
+- `POST /api/v1/video/analyze`
+
+Campos multipart: `file` y `detector_type`, con valores `ai`, `deepfake` o `comprehensive`.
+
+También están disponibles dashboard, historial y reportes en `/api/v1/dashboard`, `/api/v1/history` y `/api/v1/reports/{analysis_id}`.
+
+## Análisis integral
+
+`comprehensive` ejecuta generación AI y manipulación/deepfake como ejes independientes. En video también extrae la pista de audio con FFmpeg. Las señales vocales y visuales permanecen separadas hasta disponer de calibración audiovisual.
+
+Cada registro incluye probabilidades, evidencias, modelos, calidad técnica, SHA-256, Content Credentials mediante C2PA y métricas de validación disponibles.
+
+Los PDF se generan bajo demanda en memoria y se envían como descarga. No se guardan dentro de `Backend/reports` ni se versionan en Git.
+
+## Etiquetas
+
+- `HUMAN`: no se detectó suficiente señal de generación AI.
+- `REAL`: no se detectó suficiente señal deepfake.
+- `AI`: generación sintética detectada.
+- `DEEPFAKE`: manipulación detectada.
+- `INCONCLUSIVE`: evidencia insuficiente.
+
+`REAL` o `HUMAN` no prueban procedencia ni identidad. Confirmar suplantación exige una referencia facial/vocal consentida.
+
+Consulte `calibration/README.md` para obtener métricas reproducibles.
