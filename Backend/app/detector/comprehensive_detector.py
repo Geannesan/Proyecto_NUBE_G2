@@ -13,6 +13,7 @@ from app.detector.image_deepfake_detector import analyze_image_deepfake
 from app.detector.video_detector import analyze_video
 from app.services.validation_service import get_axis_validation
 from app.services.provenance_service import inspect_content_credentials
+from app.services.metadata_service import inspect_technical_metadata
 
 
 SUSPICIOUS_BY_AXIS = {
@@ -185,6 +186,7 @@ def analyze_comprehensive(path: str | Path, media_type: str) -> DetectionResult:
         media_type, generation, manipulation
     )
     provenance = inspect_content_credentials(media_path)
+    technical_metadata = inspect_technical_metadata(media_path, media_type)
     evidence = [
         "Los ejes de generación y manipulación se evaluaron por separado.",
         *quality_notes,
@@ -215,6 +217,7 @@ def analyze_comprehensive(path: str | Path, media_type: str) -> DetectionResult:
                 "provenance": provenance.get("provenance", "unknown"),
                 "content_credentials": provenance,
             },
+            "technical_metadata": technical_metadata,
             "validation": {
                 "calibrated": bool(generation_validation and manipulation_validation),
                 "accuracy_claimed": bool(generation_validation and manipulation_validation),

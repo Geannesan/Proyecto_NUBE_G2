@@ -331,77 +331,73 @@ def analyze_image_deepfake(
         image
     ).convert("RGB")
 
+    face_crop, face_metadata, quality_error = _prepare_face(
+        rgb_image
+    )
+
+    if face_crop is None:
+        return _build_inconclusive_result(
+            image=rgb_image,
+            reason=quality_error or "No existe evidencia facial evaluable.",
+            metadata=face_metadata,
+        )
+
     processor, model, device = (
         load_image_deepfake_components()
     )
 
-    rgb_array = np.asarray(rgb_image)
-    gray = cv2.cvtColor(rgb_array, cv2.COLOR_RGB2GRAY)
-    cascade_path = (
-        cv2.data.haarcascades
-        + "haarcascade_frontalface_default.xml"
-    )
-    face_detector = cv2.CascadeClassifier(cascade_path)
-    faces = face_detector.detectMultiScale(
-        gray,
-        scaleFactor=1.1,
-        minNeighbors=5,
-        minSize=(64, 64),
-    )
-
-    if len(faces) == 0:
-        return _build_inconclusive_result(
-            image=rgb_image,
-            reason=(
-                "No se detectó un rostro frontal para analizar "
-                "posibles manipulaciones faciales."
-            ),
-            metadata={"faces_detected": 0},
-        )
-
-    face_results: list[dict[str, Any]] = []
-
-    for face_index, (x, y, width, height) in enumerate(faces, 1):
-        margin = int(max(width, height) * 0.30)
-        x1 = max(0, int(x) - margin)
-        y1 = max(0, int(y) - margin)
-        x2 = min(rgb_image.width, int(x + width) + margin)
-        y2 = min(rgb_image.height, int(y + height) + margin)
-        face_crop = rgb_image.crop((x1, y1, x2, y2))
-
-        face_probabilities, face_raw_label = _predict_probabilities(
-            image=face_crop,
+    variant_results: list[dict[str, Any]] = []
+    for variant_name, variant in _create_variants(face_crop):
+        variant_probabilities, variant_raw_label = _predict_probabilities(
+            image=variant,
             processor=processor,
             model=model,
             device=device,
         )
-        face_results.append(
+        variant_results.append(
             {
-                "face_index": face_index,
-                "box": [x1, y1, x2, y2],
-                "raw_label": face_raw_label,
-                "FAKE": float(face_probabilities.get("FAKE", 0.0)),
-                "REAL": float(face_probabilities.get("REAL", 0.0)),
+                "variant": variant_name,
+                "raw_label": variant_raw_label,
+                "FAKE": float(variant_probabilities.get("FAKE", 0.0)),
+                "REAL": float(variant_probabilities.get("REAL", 0.0)),
             }
         )
 
-    average_fake = float(np.mean([item["FAKE"] for item in face_results]))
-    average_real = float(np.mean([item["REAL"] for item in face_results]))
+    average_fake = float(np.mean([item["FAKE"] for item in variant_results]))
+    average_real = float(np.mean([item["REAL"] for item in variant_results]))
     probabilities = {"FAKE": average_fake, "REAL": average_real}
 
-    if average_fake > average_real:
+    if average_fake >= FAKE_THRESHOLD:
         prediction = "FAKE"
         raw_label = "Fake"
         confidence = average_fake
-    else:
+    elif average_real >= REAL_THRESHOLD:
         prediction = "REAL"
         raw_label = "Real"
         confidence = average_real
+    else:
+        return _build_inconclusive_result(
+            image=rgb_image,
+            reason=(
+                "Las probabilidades de manipulación y contenido real están "
+                "en una zona de incertidumbre; no alcanzan los umbrales "
+                "calibrables para emitir un veredicto."
+            ),
+            metadata={
+                **face_metadata,
+                "inference_strategy": "single_face_multi_view_thresholded",
+                "variant_results": variant_results,
+                "fake_threshold": FAKE_THRESHOLD,
+                "real_threshold": REAL_THRESHOLD,
+            },
+            probabilities=probabilities,
+            confidence=max(average_fake, average_real),
+        )
 
     evidence = [
-        f"Se analizaron {len(face_results)} rostros detectados.",
-        "Cada rostro se recortó con margen y se procesó con la "
-        "normalización del checkpoint Celeb-DF.",
+        "Se validó un rostro frontal con tamaño y nitidez suficientes.",
+        "El rostro se contrastó en tres variantes para comprobar "
+        "la estabilidad de la predicción.",
         f"Probabilidad media {prediction}: {confidence:.2f}%.",
         "La salida es probabilística y no constituye una prueba "
         "forense definitiva.",
@@ -410,9 +406,11 @@ def analyze_image_deepfake(
     metadata = {
         "image_width": rgb_image.width,
         "image_height": rgb_image.height,
-        "faces_detected": len(face_results),
-        "inference_strategy": "face_crops_native_argmax",
-        "face_results": face_results,
+        **face_metadata,
+        "inference_strategy": "single_face_multi_view_thresholded",
+        "variant_results": variant_results,
+        "fake_threshold": FAKE_THRESHOLD,
+        "real_threshold": REAL_THRESHOLD,
     }
 
     return DetectionResult(

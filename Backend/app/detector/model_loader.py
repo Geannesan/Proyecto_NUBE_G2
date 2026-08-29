@@ -32,6 +32,11 @@ VIDEO_AI_MODEL_NAME = os.getenv(
     "umm-maybe/AI-image-detector",
 )
 
+VIDEO_AI_SECONDARY_MODEL_NAME = os.getenv(
+    "VIDEO_AI_SECONDARY_MODEL_NAME",
+    "buildborderless/CommunityForensics-DeepfakeDet-ViT",
+)
+
 VIDEO_DEEPFAKE_MODEL_NAME = os.getenv(
     "VIDEO_DEEPFAKE_MODEL_NAME",
     "prithivMLmods/Deep-Fake-Detector-v2-Model",
@@ -178,6 +183,13 @@ def load_audio_ai_components():
 def load_video_ai_components():
     return _prepare_image_model(
         VIDEO_AI_MODEL_NAME
+    )
+
+
+@lru_cache(maxsize=1)
+def load_video_ai_secondary_components():
+    return _prepare_image_model(
+        VIDEO_AI_SECONDARY_MODEL_NAME
     )
 
 

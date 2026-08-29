@@ -102,10 +102,11 @@ def build_model_reason(
         "AUTHENTIC",
         "BONAFIDE",
     }:
+        authentic_label = "HUMAN" if detector_type == "ai" else "REAL"
         return (
             f"El modelo no encontró en {media_name} "
             f"suficientes señales compatibles con "
-            f"{detector_name}. La clasificación REAL "
+            f"{detector_name}. La clasificación {authentic_label} "
             f"obtuvo una confianza de "
             f"{result.confidence:.2f}%."
         )

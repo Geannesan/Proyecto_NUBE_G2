@@ -11,14 +11,17 @@ from app.detector.image_ai_detector import normalize_ai_label
 from app.detector.image_deepfake_detector import normalize_deepfake_label
 from app.detector.model_loader import (
     VIDEO_AI_MODEL_NAME,
+    VIDEO_AI_SECONDARY_MODEL_NAME,
     VIDEO_DEEPFAKE_MODEL_NAME,
     load_video_ai_components,
+    load_video_ai_secondary_components,
     load_video_deepfake_components,
 )
 
 
 MAX_VIDEO_FRAMES = int(os.getenv("MAX_VIDEO_FRAMES", "16"))
 VIDEO_THRESHOLD = float(os.getenv("VIDEO_THRESHOLD", "60"))
+VIDEO_HUMAN_THRESHOLD = float(os.getenv("VIDEO_HUMAN_THRESHOLD", "70"))
 MIN_VALID_VIDEO_FRAMES = int(os.getenv("MIN_VALID_VIDEO_FRAMES", "3"))
 
 
@@ -68,26 +71,52 @@ def _classify_frame(image: Image.Image, detector_type: str) -> DetectionResult:
             min(image.height, int(y + height) + margin),
         ))
 
-    inputs = processor(images=image.convert("RGB"), return_tensors="pt")
-    inputs = {key: value.to(device) for key, value in inputs.items()}
-    with torch.inference_mode():
-        logits = model(**inputs).logits
+    def infer(current_processor, current_model, current_device):
+        inputs = current_processor(images=image.convert("RGB"), return_tensors="pt")
+        inputs = {key: value.to(current_device) for key, value in inputs.items()}
+        with torch.inference_mode():
+            logits = current_model(**inputs).logits
 
-    if logits.shape[-1] == 1:
-        suspicious = float(torch.sigmoid(logits)[0, 0].item() * 100)
-        probabilities = {
-            suspicious_label: suspicious,
-            normal_label: 100.0 - suspicious,
-        }
-        raw_label = "generated" if detector_type == "ai" else "fake"
-    else:
+        if logits.shape[-1] == 1:
+            suspicious = float(torch.sigmoid(logits)[0, 0].item() * 100)
+            return {
+                suspicious_label: suspicious,
+                normal_label: 100.0 - suspicious,
+            }, ("generated" if detector_type == "ai" else "fake")
+
         values = torch.softmax(logits, dim=-1)[0]
-        probabilities = {suspicious_label: 0.0, normal_label: 0.0}
+        current_probabilities = {suspicious_label: 0.0, normal_label: 0.0}
         for index, value in enumerate(values):
-            normalized = normalize(_model_label(model, index))
-            if normalized in probabilities:
-                probabilities[normalized] += float(value.item() * 100)
-        raw_label = _model_label(model, int(values.argmax().item()))
+            normalized = normalize(_model_label(current_model, index))
+            if normalized in current_probabilities:
+                current_probabilities[normalized] += float(value.item() * 100)
+        return current_probabilities, _model_label(
+            current_model, int(values.argmax().item())
+        )
+
+    probabilities, raw_label = infer(processor, model, device)
+    model_probabilities = {
+        VIDEO_AI_MODEL_NAME if detector_type == "ai" else model_name: dict(probabilities)
+    }
+
+    if detector_type == "ai":
+        secondary_processor, secondary_model, secondary_device = (
+            load_video_ai_secondary_components()
+        )
+        secondary_probabilities, secondary_raw_label = infer(
+            secondary_processor, secondary_model, secondary_device
+        )
+        model_probabilities[VIDEO_AI_SECONDARY_MODEL_NAME] = dict(
+            secondary_probabilities
+        )
+        probabilities = {
+            key: (probabilities[key] + secondary_probabilities[key]) / 2.0
+            for key in (suspicious_label, normal_label)
+        }
+        raw_label = f"{raw_label}+{secondary_raw_label}"
+        model_name = (
+            f"ensemble:{VIDEO_AI_MODEL_NAME}+{VIDEO_AI_SECONDARY_MODEL_NAME}"
+        )
 
     # Una configuración sin nombres de clase fiables no debe producir un
     # veredicto silencioso con probabilidades en cero.
@@ -109,6 +138,7 @@ def _classify_frame(image: Image.Image, detector_type: str) -> DetectionResult:
         model_name=model_name,
         evidence=[f"Fotograma clasificado por {model_name}."],
         raw_label=raw_label,
+        metadata={"model_probabilities": model_probabilities},
     )
 
 
@@ -206,13 +236,31 @@ def analyze_video(video_path: str | Path, detector_type: str = "deepfake") -> De
     median_score = float(np.median(scores))
     maximum_score = float(np.max(scores))
     vote_ratio = float(np.mean(np.asarray(scores) >= VIDEO_THRESHOLD))
+    per_model_medians: dict[str, float] = {}
+    model_disagreement = 0.0
+    if detector_type == "ai":
+        for configured_model in (VIDEO_AI_MODEL_NAME, VIDEO_AI_SECONDARY_MODEL_NAME):
+            model_scores = [
+                float(item.metadata.get("model_probabilities", {})
+                      .get(configured_model, {}).get("AI", 0.0))
+                for _, item in valid_results
+            ]
+            per_model_medians[configured_model] = float(np.median(model_scores))
+        model_disagreement = abs(
+            per_model_medians[VIDEO_AI_MODEL_NAME]
+            - per_model_medians[VIDEO_AI_SECONDARY_MODEL_NAME]
+        )
 
-    # Median + majority voting prevents one compressed transition from making
-    # an otherwise real video a false positive.
+    # Los dos veredictos necesitan evidencia suficiente. La zona intermedia
+    # se conserva como inconclusa en vez de convertirla automáticamente en HUMAN.
     if median_score >= VIDEO_THRESHOLD and vote_ratio >= 0.5:
         prediction, confidence = suspicious_label, median_score
-    else:
+    elif (100.0 - median_score) >= VIDEO_HUMAN_THRESHOLD:
         prediction, confidence = normal_label, 100.0 - median_score
+    else:
+        prediction, confidence = "INCONCLUSIVE", max(
+            median_score, 100.0 - median_score
+        )
 
     suspicious_position = int(np.argmax(scores))
     suspicious_frame = valid_results[suspicious_position][0]
@@ -228,6 +276,17 @@ def analyze_video(video_path: str | Path, detector_type: str = "deepfake") -> De
             f"Mediana de sospecha: {median_score:.2f}%.",
             f"Promedio de sospecha: {mean_score:.2f}%.",
             f"Máxima sospecha: {maximum_score:.2f}% en el fotograma {suspicious_frame}.",
+            *(
+                [
+                    "Medianas por checkpoint: "
+                    + "; ".join(
+                        f"{name}: {score:.2f}% AI"
+                        for name, score in per_model_medians.items()
+                    ),
+                    f"Desacuerdo entre checkpoints: {model_disagreement:.2f} puntos.",
+                ]
+                if detector_type == "ai" else []
+            ),
             "Se descartaron fotogramas no concluyentes antes de la decisión temporal.",
         ],
         raw_label=prediction,
@@ -242,8 +301,19 @@ def analyze_video(video_path: str | Path, detector_type: str = "deepfake") -> De
             "mean_suspicious_score": round(mean_score, 2),
             "median_suspicious_score": round(median_score, 2),
             "suspicious_vote_ratio": round(vote_ratio, 4),
+            "per_model_median_scores": {
+                key: round(value, 2) for key, value in per_model_medians.items()
+            },
+            "model_disagreement_points": round(model_disagreement, 2),
+            "quality": {
+                "score": round(max(0.0, 100.0 - model_disagreement), 2),
+                "notes": [
+                    "La calidad combina cobertura temporal y acuerdo entre checkpoints."
+                ],
+            },
             "most_suspicious_frame": suspicious_frame,
             "decision_threshold": VIDEO_THRESHOLD,
+            "human_threshold": VIDEO_HUMAN_THRESHOLD,
             "minimum_recommended_valid_frames": MIN_VALID_VIDEO_FRAMES,
         },
     )
