@@ -136,6 +136,8 @@ def analysis_to_dict(
         "SYNTHETIC",
         "MANIPULATED",
         "SPOOF",
+        "DEEPFAKE",
+        "AI_AND_DEEPFAKE",
     }
 
     reason = (
@@ -163,6 +165,7 @@ def analysis_to_dict(
         "model": {
             "name": record.model_name,
         },
+        "metadata": record.analysis_metadata or {},
         "processing_time_ms": record.processing_time_ms,
         "status": record.status,
         "report_available": bool(record.report_path),

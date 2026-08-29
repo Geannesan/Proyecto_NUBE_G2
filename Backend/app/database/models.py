@@ -90,6 +90,12 @@ class Analysis(Base):
         nullable=False,
     )
 
+    analysis_metadata: Mapped[dict[str, Any]] = mapped_column(
+        JSON,
+        default=dict,
+        nullable=False,
+    )
+
     processing_time_ms: Mapped[int] = mapped_column(
         Integer,
         default=0,
