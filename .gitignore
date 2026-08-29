@@ -10,3 +10,11 @@ venv/
 
 # Si se guardan en una carpeta específica del backend, añade la ruta completa:
 # nombre_de_tu_carpeta/
+
+# Datos generados en ejecución: nunca deben formar parte del repositorio.
+*.db
+Backend/uploads/
+Backend/reports/
+Frontend/dist/
+Frontend/node_modules/
+Backend/calibration/metrics.json
