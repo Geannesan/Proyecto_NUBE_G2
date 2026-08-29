@@ -1,0 +1,13 @@
+media_type,axis,ground_truth,score
+image,generation,0,8
+image,generation,1,91
+image,manipulation,0,12
+image,manipulation,1,88
+audio,generation,0,15
+audio,generation,1,86
+audio,manipulation,0,18
+audio,manipulation,1,83
+video,generation,0,10
+video,generation,1,90
+video,manipulation,0,14
+video,manipulation,1,89

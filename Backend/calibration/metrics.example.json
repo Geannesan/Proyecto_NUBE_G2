@@ -1,0 +1,258 @@
+{
+  "schema_version": "1.0",
+  "warning": "Estas métricas solo son válidas para este dataset etiquetado.",
+  "groups": {
+    "image:generation": {
+      "samples": 2,
+      "threshold": 50.0,
+      "confusion_matrix": {
+        "tp": 1,
+        "tn": 1,
+        "fp": 0,
+        "fn": 0
+      },
+      "accuracy": 1.0,
+      "precision": 1.0,
+      "recall_sensitivity": 1.0,
+      "specificity": 1.0,
+      "f1": 1.0,
+      "false_positive_rate": 0.0,
+      "false_negative_rate": 0.0,
+      "roc_auc": 1.0,
+      "eer": 0.0,
+      "eer_threshold": 91.0,
+      "brier_score": 0.00725,
+      "expected_calibration_error": 0.085,
+      "calibration_bins": [
+        {
+          "range": [
+            0,
+            10
+          ],
+          "count": 1,
+          "mean_score": 8.0,
+          "observed_positive_rate": 0.0
+        },
+        {
+          "range": [
+            90,
+            100
+          ],
+          "count": 1,
+          "mean_score": 91.0,
+          "observed_positive_rate": 100.0
+        }
+      ]
+    },
+    "image:manipulation": {
+      "samples": 2,
+      "threshold": 50.0,
+      "confusion_matrix": {
+        "tp": 1,
+        "tn": 1,
+        "fp": 0,
+        "fn": 0
+      },
+      "accuracy": 1.0,
+      "precision": 1.0,
+      "recall_sensitivity": 1.0,
+      "specificity": 1.0,
+      "f1": 1.0,
+      "false_positive_rate": 0.0,
+      "false_negative_rate": 0.0,
+      "roc_auc": 1.0,
+      "eer": 0.0,
+      "eer_threshold": 88.0,
+      "brier_score": 0.0144,
+      "expected_calibration_error": 0.12,
+      "calibration_bins": [
+        {
+          "range": [
+            10,
+            20
+          ],
+          "count": 1,
+          "mean_score": 12.0,
+          "observed_positive_rate": 0.0
+        },
+        {
+          "range": [
+            80,
+            90
+          ],
+          "count": 1,
+          "mean_score": 88.0,
+          "observed_positive_rate": 100.0
+        }
+      ]
+    },
+    "audio:generation": {
+      "samples": 2,
+      "threshold": 50.0,
+      "confusion_matrix": {
+        "tp": 1,
+        "tn": 1,
+        "fp": 0,
+        "fn": 0
+      },
+      "accuracy": 1.0,
+      "precision": 1.0,
+      "recall_sensitivity": 1.0,
+      "specificity": 1.0,
+      "f1": 1.0,
+      "false_positive_rate": 0.0,
+      "false_negative_rate": 0.0,
+      "roc_auc": 1.0,
+      "eer": 0.0,
+      "eer_threshold": 86.0,
+      "brier_score": 0.02105,
+      "expected_calibration_error": 0.145,
+      "calibration_bins": [
+        {
+          "range": [
+            10,
+            20
+          ],
+          "count": 1,
+          "mean_score": 15.0,
+          "observed_positive_rate": 0.0
+        },
+        {
+          "range": [
+            80,
+            90
+          ],
+          "count": 1,
+          "mean_score": 86.0,
+          "observed_positive_rate": 100.0
+        }
+      ]
+    },
+    "audio:manipulation": {
+      "samples": 2,
+      "threshold": 50.0,
+      "confusion_matrix": {
+        "tp": 1,
+        "tn": 1,
+        "fp": 0,
+        "fn": 0
+      },
+      "accuracy": 1.0,
+      "precision": 1.0,
+      "recall_sensitivity": 1.0,
+      "specificity": 1.0,
+      "f1": 1.0,
+      "false_positive_rate": 0.0,
+      "false_negative_rate": 0.0,
+      "roc_auc": 1.0,
+      "eer": 0.0,
+      "eer_threshold": 83.0,
+      "brier_score": 0.03065,
+      "expected_calibration_error": 0.175,
+      "calibration_bins": [
+        {
+          "range": [
+            10,
+            20
+          ],
+          "count": 1,
+          "mean_score": 18.0,
+          "observed_positive_rate": 0.0
+        },
+        {
+          "range": [
+            80,
+            90
+          ],
+          "count": 1,
+          "mean_score": 83.0,
+          "observed_positive_rate": 100.0
+        }
+      ]
+    },
+    "video:generation": {
+      "samples": 2,
+      "threshold": 50.0,
+      "confusion_matrix": {
+        "tp": 1,
+        "tn": 1,
+        "fp": 0,
+        "fn": 0
+      },
+      "accuracy": 1.0,
+      "precision": 1.0,
+      "recall_sensitivity": 1.0,
+      "specificity": 1.0,
+      "f1": 1.0,
+      "false_positive_rate": 0.0,
+      "false_negative_rate": 0.0,
+      "roc_auc": 1.0,
+      "eer": 0.0,
+      "eer_threshold": 90.0,
+      "brier_score": 0.01,
+      "expected_calibration_error": 0.1,
+      "calibration_bins": [
+        {
+          "range": [
+            10,
+            20
+          ],
+          "count": 1,
+          "mean_score": 10.0,
+          "observed_positive_rate": 0.0
+        },
+        {
+          "range": [
+            90,
+            100
+          ],
+          "count": 1,
+          "mean_score": 90.0,
+          "observed_positive_rate": 100.0
+        }
+      ]
+    },
+    "video:manipulation": {
+      "samples": 2,
+      "threshold": 50.0,
+      "confusion_matrix": {
+        "tp": 1,
+        "tn": 1,
+        "fp": 0,
+        "fn": 0
+      },
+      "accuracy": 1.0,
+      "precision": 1.0,
+      "recall_sensitivity": 1.0,
+      "specificity": 1.0,
+      "f1": 1.0,
+      "false_positive_rate": 0.0,
+      "false_negative_rate": 0.0,
+      "roc_auc": 1.0,
+      "eer": 0.0,
+      "eer_threshold": 89.0,
+      "brier_score": 0.01585,
+      "expected_calibration_error": 0.125,
+      "calibration_bins": [
+        {
+          "range": [
+            10,
+            20
+          ],
+          "count": 1,
+          "mean_score": 14.0,
+          "observed_positive_rate": 0.0
+        },
+        {
+          "range": [
+            80,
+            90
+          ],
+          "count": 1,
+          "mean_score": 89.0,
+          "observed_positive_rate": 100.0
+        }
+      ]
+    }
+  }
+}
