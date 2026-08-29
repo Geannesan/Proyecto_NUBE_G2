@@ -14,6 +14,7 @@ services:
       retries: 10
 
   backend:
+    image: deepfakeshield-backend:latest
     build:
       context: ./Backend
       dockerfile: Dockerfile
@@ -21,11 +22,12 @@ services:
     ports:
       - "8000:8000"
     volumes:
-      - huggingface-cache:/root/.cache/huggingface
+      - huggingface-cache:/home/app/.cache/huggingface
       - uploads-data:/app/uploads
 
     env_file:
-      - .env
+      - path: .env
+        required: false
     environment:
       DATABASE_URL: postgresql+psycopg://deepfakeshield:${POSTGRES_PASSWORD:-deepfakeshield_dev}@postgres:5432/deepfakeshield
       CORS_ORIGINS: http://localhost:8080
@@ -40,11 +42,12 @@ services:
     restart: unless-stopped
 
   frontend:
+    image: deepfakeshield-frontend:latest
     build:
       context: ./Frontend
       dockerfile: Dockerfile
     ports:
-      - "8080:80"
+      - "8080:8080"
     depends_on:
       backend:
         condition: service_healthy
