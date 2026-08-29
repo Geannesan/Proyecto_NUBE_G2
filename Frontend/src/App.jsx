@@ -3,7 +3,7 @@ import axios from "axios";
 import "./App.css";
 
 const API_URL =
-  import.meta.env.VITE_API_URL || "http://localhost:8000";
+  import.meta.env.VITE_API_URL ?? "";
 
 /*
   Rutas usadas por cada botón.
@@ -269,6 +269,171 @@ function NetworkGraphic({ className = "" }) {
   );
 }
 
+const MEDIA_TECHNOLOGIES = {
+  image: {
+    ai: [
+      ["Vision Transformer", "Distingue patrones globales de generación", "Se refleja en la probabilidad AI frente a HUMAN."],
+      ["Análisis de resolución", "Comprueba que la entrada sea técnicamente evaluable", "Se refleja en las dimensiones y cobertura del archivo."],
+    ],
+    deepfake: [
+      ["Detección facial OpenCV", "Localiza rostros antes de buscar manipulaciones", "Se refleja en el número de rostros evaluados."],
+      ["Clasificador Celeb-DF", "Busca patrones compatibles con alteración facial", "Se refleja en la probabilidad DEEPFAKE frente a REAL."],
+    ],
+  },
+  audio: {
+    ai: [
+      ["Wav2Vec2 para voz sintética", "Modela características de audio humano y generado", "Se refleja en la probabilidad AI frente a HUMAN."],
+      ["Segmentación solapada", "Evita que un único tramo domine la decisión", "Se refleja en la cantidad y el acuerdo de segmentos."],
+      ["Control de calidad acústica", "Detecta silencio, saturación o evidencia insuficiente", "Se refleja en los avisos y casos no concluyentes."],
+    ],
+    deepfake: [
+      ["Wav2Vec2 anti-spoofing", "Busca huellas de clonación o manipulación de voz", "Se refleja en la probabilidad DEEPFAKE frente a REAL."],
+      ["Segmentación solapada", "Contrasta distintos tramos de la voz", "Se refleja en la cantidad y el acuerdo de segmentos."],
+      ["Control de calidad acústica", "Evita afirmar suplantación con audio insuficiente", "Se refleja en los avisos y casos no concluyentes."],
+    ],
+  },
+  video: {
+    ai: [
+      ["Ensemble de dos Vision Transformers", "Contrasta dos checkpoints independientes para detectar video generado", "Se refleja en la probabilidad AI/HUMAN, las medianas por modelo y su desacuerdo."],
+      ["Muestreo temporal", "Distribuye fotogramas a lo largo de la secuencia", "Se refleja en fotogramas muestreados, válidos y descartados."],
+      ["Agregación temporal", "Combina mediana y acuerdo para reducir falsos positivos aislados", "Se refleja en las evidencias y la decisión final."],
+    ],
+    deepfake: [
+      ["Detector facial + Celeb-DF", "Localiza y evalúa rostros manipulados", "Se refleja en la probabilidad DEEPFAKE frente a REAL."],
+      ["Muestreo temporal", "Busca persistencia de la manipulación en varios momentos", "Se refleja en fotogramas muestreados, válidos y descartados."],
+      ["Agregación temporal", "Exige acuerdo entre cuadros para sostener el hallazgo", "Se refleja en las evidencias y la decisión final."],
+    ],
+  },
+};
+
+const TRACE_TECHNOLOGIES = {
+  image: [
+    ["EXIF y metadatos técnicos", "Revisa formato, dimensiones, software y datos de captura declarados", "Se refleja en la cobertura y en los metadatos del informe."],
+    ["C2PA + SHA-256", "Comprueba Content Credentials y fija la identidad exacta del archivo", "Se refleja en Integridad y trazabilidad; su ausencia no demuestra fraude."],
+  ],
+  audio: [
+    ["FFprobe + SHA-256", "Registra códec, duración, pistas e identidad exacta del archivo", "Se refleja en los metadatos y la trazabilidad del informe."],
+    ["Content Credentials C2PA", "Busca procedencia verificable cuando el formato la proporciona", "Se refleja en Integridad; su ausencia no demuestra fraude."],
+  ],
+  video: [
+    ["FFprobe + SHA-256", "Registra códec, FPS, duración, pistas e identidad exacta del archivo", "Se refleja en los metadatos y la trazabilidad del informe."],
+    ["Content Credentials C2PA", "Busca procedencia verificable cuando el archivo la proporciona", "Se refleja en Integridad; su ausencia no demuestra fraude."],
+  ],
+};
+
+function ScoreBar({ label, value, tone }) {
+  const safeValue = Math.min(100, Math.max(0, Number(value) || 0));
+  return (
+    <div className={`analysis-score ${tone}`}>
+      <div><span>{label}</span><strong>{safeValue.toFixed(1)}%</strong></div>
+      <div className="analysis-score-track"><i style={{ width: `${safeValue}%` }} /></div>
+    </div>
+  );
+}
+
+function AnalysisInsightDashboard({ result, mediaType, detectorType, narrative }) {
+  const metadata = result?.metadata || {};
+  const isAi = detectorType === "ai";
+  const suspiciousLabel = isAi ? "AI" : (result?.probabilities?.DEEPFAKE !== undefined ? "DEEPFAKE" : "FAKE");
+  const normalizedPrediction = String(result?.prediction ?? "").toUpperCase();
+  const status = normalizedPrediction === "INCONCLUSIVE"
+    ? "inconclusive"
+    : ["AI", "DEEPFAKE", "FAKE"].includes(normalizedPrediction) ? "detected" : "not_detected";
+  const suspiciousScore = Number(result?.probabilities?.[suspiciousLabel] ?? 0);
+  const sampled = Number(metadata.sampled_frames ?? metadata.chunk_count ?? 0);
+  const valid = Number(metadata.valid_frames ?? sampled);
+  const quality = Number(metadata.quality?.score ?? (sampled > 0 ? (valid / sampled) * 100 : (status === "inconclusive" ? 0 : 100)));
+  const technical = metadata.technical_metadata || {};
+  const credentialsStatus = metadata.integrity?.content_credentials?.status ?? "unknown";
+
+  const samplingSummary = mediaType === "video"
+    ? `${metadata.sampled_frames ?? 0} fotogramas muestreados · ${metadata.valid_frames ?? 0} evaluables`
+    : mediaType === "audio"
+      ? `${metadata.chunk_count ?? 0} segmentos acústicos analizados`
+      : `${metadata.image_width ?? technical.width ?? "?"} × ${metadata.image_height ?? technical.height ?? "?"} píxeles${!isAi ? ` · ${metadata.faces_detected ?? 0} candidatos faciales detectados` : ""}`;
+
+  return (
+    <section className="analysis-insight-dashboard">
+      <div className="analysis-dashboard-heading">
+        <div><span className="section-eyebrow">LECTURA DEL ARCHIVO ACTUAL</span><h3>Qué sostiene este resultado</h3></div>
+        <span className="current-file-badge">{mediaType.toUpperCase()}</span>
+      </div>
+      <div className="analysis-kpi-grid">
+        <div><span>{isAi ? "Generación AI" : "Manipulación deepfake"}</span><strong>{suspiciousScore.toFixed(1)}%</strong><small>{status}</small></div>
+        <div><span>Clasificación</span><strong>{result?.prediction ?? "N/D"}</strong><small>{isAi ? "AI frente a HUMAN" : "DEEPFAKE frente a REAL"}</small></div>
+        <div><span>Calidad de evidencia</span><strong>{quality.toFixed(0)}%</strong><small>{quality >= 70 ? "evidencia utilizable" : "evidencia limitada"}</small></div>
+      </div>
+      <div className="analysis-graph-grid">
+        <div className="analysis-bars-card">
+          <h4>Distribución de señales</h4>
+          <ScoreBar label={isAi ? "Probabilidad de generación AI" : "Probabilidad de deepfake"} value={suspiciousScore} tone={isAi ? "danger" : "violet"} />
+          <ScoreBar label={isAi ? "Probabilidad de origen humano" : "Probabilidad de contenido real"} value={result?.probabilities?.[isAi ? "HUMAN" : "REAL"] ?? 0} tone="success" />
+          <ScoreBar label="Calidad técnica" value={quality} tone="success" />
+        </div>
+        <div className="analysis-context-card">
+          <span className="chart-kicker">COBERTURA DEL ANÁLISIS</span>
+          <strong>{samplingSummary}</strong>
+          <p>{metadata.quality?.notes?.join(" ") || "La entrada fue procesada por los detectores configurados."}</p>
+        </div>
+      </div>
+      <div className="analysis-verdict-copy">
+        <span className="chart-kicker">INTERPRETACIÓN</span>
+        <h4>Por qué el sistema llegó a esta conclusión</h4>
+        <p>{result?.analysis?.model_reason}</p>
+        <p>{narrative}</p>
+      </div>
+      <div className="axis-result-grid">
+          <article className={`axis-result-card ${status}`}>
+            <div className="axis-card-heading">
+              <div><span>{isAi ? "AI frente a HUMAN" : "DEEPFAKE frente a REAL"}</span><h4>{isAi ? "Generación AI" : "Manipulación deepfake"}</h4></div>
+              <strong>{suspiciousScore.toFixed(1)}%</strong>
+            </div>
+            <p><b>Estado:</b> {status} · <b>Resultado:</b> {result?.prediction ?? "no evaluado"}</p>
+            {(result?.analysis?.evidence || []).slice(0, 3).map((item, index) => (
+              <div className="compact-evidence" key={`${detectorType}-${index}`}><i>✓</i><span>{item}</span></div>
+            ))}
+          </article>
+      </div>
+      {!isAi && <div className="identity-notice">
+        <span>IDENTIDAD Y SUPLANTACIÓN</span>
+        <div><strong>not_assessed</strong><p>Este filtro detecta manipulación facial o vocal. Confirmar la suplantación de una persona concreta requiere una referencia biométrica autorizada.</p></div>
+      </div>}
+      <div className="analysis-trace-grid">
+        <div><span>Modelo ejecutado</span><strong>{result?.model?.name ?? "No disponible"}</strong></div>
+        <div><span>Detector aplicado</span><strong>{isAi ? "Generación AI" : "Deepfake"}</strong></div>
+        {metadata.integrity?.sha256 && <div><span>SHA-256</span><strong title={metadata.integrity.sha256}>{metadata.integrity.sha256.slice(0, 20)}…</strong></div>}
+        {metadata.integrity?.content_credentials && <div><span>Content Credentials</span><strong>{credentialsStatus}</strong></div>}
+      </div>
+    </section>
+  );
+}
+
+function AnalysisTechnologies({ result, mediaType, detectorType }) {
+  const detectorTechnologies = MEDIA_TECHNOLOGIES[mediaType]?.[detectorType] || [];
+  const traceTechnologies = result?.metadata?.integrity
+    ? TRACE_TECHNOLOGIES[mediaType] || []
+    : [];
+  const technologies = [...detectorTechnologies, ...traceTechnologies];
+  const modelNames = [result?.model?.name].filter(Boolean);
+  return (
+    <section className={`result-technologies ${mediaType}`}>
+      <div className="section-heading centered">
+        <span className="section-eyebrow">TECNOLOGÍAS ACTIVADAS EN ESTE ANÁLISIS</span>
+        <h2>Qué se utilizó, por qué y dónde verlo</h2>
+        <p>Estas capacidades corresponden al archivo recién procesado. Cada afirmación apunta a un dato visible en el resultado o en el PDF.</p>
+      </div>
+      <div className="technology-evidence-grid">
+        {technologies.map(([name, why, reflection]) => (
+          <article key={name}>
+            <span>✓ EN USO</span><h3>{name}</h3><p><b>Por qué:</b> {why}</p><p><b>Evidencia:</b> {reflection}</p>
+          </article>
+        ))}
+      </div>
+      {modelNames.length > 0 && <p className="models-used"><b>Checkpoints ejecutados:</b> {modelNames.join(" · ")}</p>}
+    </section>
+  );
+}
+
 function App() {
   const [activeMedia, setActiveMedia] = useState("image");
   const [activeDetector, setActiveDetector] =
@@ -448,19 +613,13 @@ function App() {
       ? "NO CONCLUYENTE"
       : rawPredictionText;
 
-  const modelReason =
-    result?.analysis?.model_reason ??
-    result?.model_reason ??
-    result?.analysis ??
-    "El backend no devolvió una explicación adicional.";
-
-  const evidence = Array.isArray(
-    result?.analysis?.evidence
-  )
-    ? result.analysis.evidence
-    : Array.isArray(result?.evidence)
-      ? result.evidence
-      : [];
+  const normalizedPrediction = String(result?.prediction ?? "").toUpperCase();
+  const isSuspicious = ["AI", "DEEPFAKE", "FAKE"].includes(normalizedPrediction);
+  const focusedNarrative = normalizedPrediction === "INCONCLUSIVE"
+    ? "La evidencia de este detector no es suficiente para emitir una conclusión firme. Se recomienda usar el archivo original, con mejor calidad y menor compresión."
+    : isSuspicious
+      ? `El detector ${activeDetector === "ai" ? "de generación" : "de deepfake"} encontró señales consistentes. La conclusión se apoya en ${result?.analysis?.evidence?.length ?? 0} indicadores del modelo seleccionado.`
+      : `El detector ${activeDetector === "ai" ? "de generación" : "de deepfake"} no alcanzó el umbral de evidencia sospechosa. Esto reduce la sospecha para este eje, pero no evalúa automáticamente el otro.`;
 
   const renderPreview = () => {
     if (!preview) return null;
@@ -548,31 +707,17 @@ function App() {
             className="sub-switch"
             aria-label="Tipo de detector"
           >
-            <button
-              type="button"
-              className={
-                activeDetector === "ai" ? "active" : ""
-              }
-              aria-pressed={activeDetector === "ai"}
-              onClick={() => selectDetector("ai")}
-            >
-              {detectorLabels.ai}
-            </button>
-
-            <button
-              type="button"
-              className={
-                activeDetector === "deepfake"
-                  ? "active"
-                  : ""
-              }
-              aria-pressed={
-                activeDetector === "deepfake"
-              }
-              onClick={() => selectDetector("deepfake")}
-            >
-              {detectorLabels.deepfake}
-            </button>
+            {Object.keys(detectorLabels).map((detectorType) => (
+              <button
+                key={detectorType}
+                type="button"
+                className={activeDetector === detectorType ? "active" : ""}
+                aria-pressed={activeDetector === detectorType}
+                onClick={() => selectDetector(detectorType)}
+              >
+                {detectorLabels[detectorType]}
+              </button>
+            ))}
           </nav>
 
           <section className="metal-panel">
@@ -741,65 +886,28 @@ function App() {
                 </div>
               </div>
 
-              <div className="model-analysis">
-                <h3>Explicación del modelo</h3>
-                <p>
-                  {typeof modelReason === "string"
-                    ? modelReason
-                    : JSON.stringify(modelReason)}
-                </p>
-              </div>
+              <AnalysisInsightDashboard
+                result={result}
+                mediaType={activeMedia}
+                detectorType={activeDetector}
+                narrative={focusedNarrative}
+              />
+              <AnalysisTechnologies result={result} mediaType={activeMedia} detectorType={activeDetector} />
 
-              {evidence.length > 0 && (
-                <div className="evidence-section">
-                  <h3>Indicadores encontrados</h3>
-
-                  <div className="evidence-grid">
-                    {evidence.map((item, index) => (
-                      <article
-                        className="evidence-card"
-                        key={`${String(item)}-${index}`}
-                      >
-                        <span className="evidence-check">
-                          ✓
-                        </span>
-                        <p>
-                          {typeof item === "string"
-                            ? item
-                            : JSON.stringify(item)}
-                        </p>
-                      </article>
-                    ))}
-                  </div>
-                </div>
+              {result?.analysis_id && (
+                <a
+                  className="primary-button report-link"
+                  href={`${API_URL}/api/v1/reports/${result.analysis_id}`}
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  Descargar reporte técnico PDF
+                </a>
               )}
             </section>
           )}
         </section>
 
-        <section className="technology-strip">
-          <nav className="technology-tabs">
-            <button type="button" className="active">
-              TECNOLOGÍAS
-            </button>
-            <button type="button">
-              MONITOREO IA
-            </button>
-            <button type="button">
-              DEEP FAKE DETECTOR
-            </button>
-            <button type="button">
-              SEGURIDAD
-            </button>
-          </nav>
-
-          <p>
-            AI Image Detector • Automatización • Deepfake
-            Detector • Autenticidad Digital • Detección de
-            Manipulación • Análisis de Patrones •
-            Verificación de Contenido
-          </p>
-        </section>
       </div>
 
     
