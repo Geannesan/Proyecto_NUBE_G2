@@ -1,4 +1,5 @@
 from app.detector.audio_detector import _build_detection_result
+from app.detector.model_loader import AUDIO_AI_MODEL_NAME, AUDIO_DEEPFAKE_MODEL_NAME
 
 
 def _result(detector_type, fake_score, fake_vote_ratio):
@@ -47,3 +48,7 @@ def test_deepfake_detector_keeps_real_label():
     result = _result("deepfake", fake_score=5.0, fake_vote_ratio=0.0)
 
     assert result.prediction == "REAL"
+
+
+def test_audio_axes_use_independent_checkpoints():
+    assert AUDIO_AI_MODEL_NAME != AUDIO_DEEPFAKE_MODEL_NAME

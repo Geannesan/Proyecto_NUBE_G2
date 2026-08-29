@@ -6,6 +6,7 @@ from app.detector.video_detector import (
     _sample_frame_indexes,
     _suspicious_probability,
 )
+from app.detector.model_loader import VIDEO_AI_MODEL_NAME, VIDEO_DEEPFAKE_MODEL_NAME
 
 
 def _result(prediction: str, probabilities: dict[str, float]) -> DetectionResult:
@@ -31,3 +32,8 @@ def test_real_frame_keeps_low_fake_probability():
 def test_sampling_avoids_first_and_last_frame():
     indexes = _sample_frame_indexes(100, 10)
     assert np.array_equal(indexes, np.asarray([5, 15, 25, 35, 45, 55, 65, 75, 85, 95]))
+
+
+def test_video_uses_dedicated_models():
+    assert VIDEO_AI_MODEL_NAME == "umm-maybe/AI-image-detector"
+    assert VIDEO_DEEPFAKE_MODEL_NAME == "prithivMLmods/Deep-Fake-Detector-v2-Model"
