@@ -1,0 +1,3 @@
+.developer-grid { align-items: stretch; }
+.developer-grid article { display: flex; height: 100%; flex-direction: column; }
+.developer-grid article p { flex: 1; }

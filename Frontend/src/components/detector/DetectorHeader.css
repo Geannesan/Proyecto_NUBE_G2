@@ -1,0 +1,8 @@
+.detect-editorial-intro {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+}
+
+.detect-editorial-intro h1 { width: 100%; }
+.detect-editorial-intro p { position: static; width: 100%; margin-top: 1rem; }

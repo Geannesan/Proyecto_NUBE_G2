@@ -1,0 +1,78 @@
+.capability-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  align-items: stretch;
+  gap: 1.5rem;
+  margin-top: 2rem;
+  padding: 1.75rem;              /* Espacio perimetral holgado dentro del marco exterior */
+  box-sizing: border-box;
+  width: 100%;
+}
+
+.capability-grid article {
+  display: flex;
+  min-width: 0;
+  min-height: 380px;             /* Hace los cuadros más altos para que no queden apretados */
+  height: 100%;
+  flex-direction: column;
+  justify-content: space-between;
+  background: #111722;
+  border: 1px solid #1e293b;
+  border-radius: 0.85rem;
+  padding: 2rem 1.75rem;         /* Más espacio interno arriba/abajo y a los lados */
+  box-sizing: border-box;
+  margin: 0 !important;         /* Evita desbordes verticales */
+  transition: transform 0.2s ease, border-color 0.2s ease;
+}
+
+.capability-grid article:hover {
+  border-color: #38bdf8;
+  transform: translateY(-3px);
+}
+
+/* Números 01, 02, 03 */
+.capability-grid article > span {
+  display: block;
+  font-family: monospace;
+  font-size: 0.95rem;
+  font-weight: 700;
+  margin-bottom: 0.75rem;
+}
+
+/* Títulos */
+.capability-grid h3 {
+  font-size: 1.25rem;
+  font-weight: 700;
+  margin: 0 0 1rem 0;
+}
+
+/* Párrafos descriptivos */
+.capability-grid article p { 
+  flex: 1 1 auto; 
+  font-size: 0.925rem;
+  line-height: 1.65;
+  margin: 0 0 1.5rem 0;
+}
+
+/* Botones inferiores */
+.capability-grid button {
+  width: 100%;
+  padding: 0.75rem 1.25rem;
+  border-radius: 9999px;
+  font-size: 0.9rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+@media (max-width: 760px) {
+  .capability-grid { 
+    grid-template-columns: 1fr; 
+    gap: 1.25rem;
+    padding: 1rem;
+  }
+  
+  .capability-grid article {
+    min-height: auto;
+    padding: 1.5rem;
+  }
+}
