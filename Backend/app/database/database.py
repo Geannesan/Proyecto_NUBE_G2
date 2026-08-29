@@ -1,7 +1,7 @@
 import os
 from collections.abc import Generator
 
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, inspect, text
 from sqlalchemy.orm import (
     DeclarativeBase,
     Session,
@@ -55,3 +55,12 @@ def init_db() -> None:
     from app.database import models  # noqa: F401
 
     Base.metadata.create_all(bind=engine)
+
+    # Migración mínima compatible con bases creadas por la versión 2.
+    columns = {column["name"] for column in inspect(engine).get_columns("analyses")}
+    if "analysis_metadata" not in columns:
+        json_type = "JSONB" if engine.dialect.name == "postgresql" else "JSON"
+        with engine.begin() as connection:
+            connection.execute(text(
+                f"ALTER TABLE analyses ADD COLUMN analysis_metadata {json_type} NOT NULL DEFAULT '{{}}'"
+            ))

@@ -112,19 +112,6 @@ def count_grouped_by_prediction(
     }
 
 
-def update_report_path(
-    db: Session,
-    record: Analysis,
-    report_path: str,
-) -> Analysis:
-    record.report_path = report_path
-    db.add(record)
-    db.commit()
-    db.refresh(record)
-
-    return record
-
-
 def analysis_to_dict(
     record: Analysis,
     *,
@@ -168,7 +155,8 @@ def analysis_to_dict(
         "metadata": record.analysis_metadata or {},
         "processing_time_ms": record.processing_time_ms,
         "status": record.status,
-        "report_available": bool(record.report_path),
+        "report_available": True,
+        "report_generation": "on_demand_memory",
     }
 
     if include_file_path:
@@ -178,7 +166,7 @@ def analysis_to_dict(
                 "stored_filename": record.stored_filename,
                 "content_type": record.content_type,
                 "size_bytes": record.size_bytes,
-                "report_path": record.report_path,
+                "report_path": None,
             }
         )
 
