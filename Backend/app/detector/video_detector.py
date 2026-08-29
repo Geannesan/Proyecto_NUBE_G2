@@ -3,16 +3,113 @@ from pathlib import Path
 
 import cv2
 import numpy as np
+import torch
 from PIL import Image
 
 from app.detector.detector import DetectionResult
-from app.detector.image_ai_detector import analyze_image_ai
-from app.detector.image_deepfake_detector import analyze_image_deepfake
+from app.detector.image_ai_detector import normalize_ai_label
+from app.detector.image_deepfake_detector import normalize_deepfake_label
+from app.detector.model_loader import (
+    VIDEO_AI_MODEL_NAME,
+    VIDEO_DEEPFAKE_MODEL_NAME,
+    load_video_ai_components,
+    load_video_deepfake_components,
+)
 
 
 MAX_VIDEO_FRAMES = int(os.getenv("MAX_VIDEO_FRAMES", "16"))
 VIDEO_THRESHOLD = float(os.getenv("VIDEO_THRESHOLD", "60"))
 MIN_VALID_VIDEO_FRAMES = int(os.getenv("MIN_VALID_VIDEO_FRAMES", "3"))
+
+
+def _model_label(model, index: int) -> str:
+    labels = getattr(model.config, "id2label", {}) or {}
+    return str(labels.get(index, labels.get(str(index), f"LABEL_{index}")))
+
+
+def _classify_frame(image: Image.Image, detector_type: str) -> DetectionResult:
+    """Clasifica un fotograma con los modelos dedicados exclusivamente a video."""
+    if detector_type == "ai":
+        processor, model, device = load_video_ai_components()
+        normalize = normalize_ai_label
+        suspicious_label, normal_label = "AI", "HUMAN"
+        model_name = VIDEO_AI_MODEL_NAME
+    else:
+        processor, model, device = load_video_deepfake_components()
+        normalize = normalize_deepfake_label
+        suspicious_label, normal_label = "FAKE", "REAL"
+        model_name = VIDEO_DEEPFAKE_MODEL_NAME
+
+        # El checkpoint deepfake es facial: se analiza el rostro dominante con
+        # contexto alrededor, tal como fue diseñado el detector de referencia.
+        rgb_array = np.asarray(image.convert("RGB"))
+        gray = cv2.cvtColor(rgb_array, cv2.COLOR_RGB2GRAY)
+        cascade = cv2.CascadeClassifier(
+            cv2.data.haarcascades + "haarcascade_frontalface_default.xml"
+        )
+        faces = cascade.detectMultiScale(
+            gray, scaleFactor=1.1, minNeighbors=5, minSize=(64, 64)
+        )
+        if len(faces) == 0:
+            return DetectionResult(
+                prediction="INCONCLUSIVE",
+                confidence=0.0,
+                probabilities={"FAKE": 0.0, "REAL": 0.0},
+                model_name=model_name,
+                evidence=["No se detectó un rostro frontal en el fotograma."],
+                raw_label="inconclusive",
+            )
+        x, y, width, height = max(faces, key=lambda face: int(face[2]) * int(face[3]))
+        margin = int(max(width, height) * 0.25)
+        image = image.crop((
+            max(0, int(x) - margin),
+            max(0, int(y) - margin),
+            min(image.width, int(x + width) + margin),
+            min(image.height, int(y + height) + margin),
+        ))
+
+    inputs = processor(images=image.convert("RGB"), return_tensors="pt")
+    inputs = {key: value.to(device) for key, value in inputs.items()}
+    with torch.inference_mode():
+        logits = model(**inputs).logits
+
+    if logits.shape[-1] == 1:
+        suspicious = float(torch.sigmoid(logits)[0, 0].item() * 100)
+        probabilities = {
+            suspicious_label: suspicious,
+            normal_label: 100.0 - suspicious,
+        }
+        raw_label = "generated" if detector_type == "ai" else "fake"
+    else:
+        values = torch.softmax(logits, dim=-1)[0]
+        probabilities = {suspicious_label: 0.0, normal_label: 0.0}
+        for index, value in enumerate(values):
+            normalized = normalize(_model_label(model, index))
+            if normalized in probabilities:
+                probabilities[normalized] += float(value.item() * 100)
+        raw_label = _model_label(model, int(values.argmax().item()))
+
+    # Una configuración sin nombres de clase fiables no debe producir un
+    # veredicto silencioso con probabilidades en cero.
+    if sum(probabilities.values()) < 99.0:
+        return DetectionResult(
+            prediction="INCONCLUSIVE",
+            confidence=0.0,
+            probabilities={suspicious_label: 0.0, normal_label: 0.0},
+            model_name=model_name,
+            evidence=[f"Etiquetas del modelo no reconocidas: {model.config.id2label}"],
+            raw_label=raw_label,
+        )
+
+    prediction = max(probabilities, key=probabilities.get)
+    return DetectionResult(
+        prediction=prediction,
+        confidence=probabilities[prediction],
+        probabilities=probabilities,
+        model_name=model_name,
+        evidence=[f"Fotograma clasificado por {model_name}."],
+        raw_label=raw_label,
+    )
 
 
 def _suspicious_probability(result: DetectionResult, detector_type: str) -> float:
@@ -69,7 +166,7 @@ def analyze_video(video_path: str | Path, detector_type: str = "deepfake") -> De
             if not success or frame is None:
                 continue
             image = Image.fromarray(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
-            result = analyze_image_ai(image) if detector_type == "ai" else analyze_image_deepfake(image)
+            result = _classify_frame(image, detector_type)
             frame_results.append((int(frame_index), result))
     finally:
         capture.release()

@@ -25,6 +25,18 @@ IMAGE_DEEPFAKE_MODEL_NAME = os.getenv(
     "fabar1/vit-detection-celebdf-deepfake",
 )
 
+# Modelos independientes para video. Cada fotograma se procesa con el
+# checkpoint correspondiente sin cambiar los detectores de imagen existentes.
+VIDEO_AI_MODEL_NAME = os.getenv(
+    "VIDEO_AI_MODEL_NAME",
+    "umm-maybe/AI-image-detector",
+)
+
+VIDEO_DEEPFAKE_MODEL_NAME = os.getenv(
+    "VIDEO_DEEPFAKE_MODEL_NAME",
+    "prithivMLmods/Deep-Fake-Detector-v2-Model",
+)
+
 
 # ============================================================
 # MODELOS DE AUDIO
@@ -34,14 +46,17 @@ IMAGE_DEEPFAKE_MODEL_NAME = os.getenv(
 # voz humana frente a voz generada por IA/TTS/voice cloning.
 AUDIO_AI_MODEL_NAME = os.getenv(
     "AUDIO_AI_MODEL_NAME",
-    "Dax99993/deepfake-spanish-wav2vec2-linear-augmented",
+    os.getenv(
+        "AUDIO_AI_VOICE_MODEL_NAME",
+        "Dax99993/deepfake-spanish-wav2vec2-linear-augmented",
+    ),
 )
 
 # AUDIO + DEEPFAKE:
 # voz auténtica frente a voz falsa/manipulada/spoof.
 AUDIO_DEEPFAKE_MODEL_NAME = os.getenv(
     "AUDIO_DEEPFAKE_MODEL_NAME",
-    "Dax99993/deepfake-spanish-wav2vec2-linear-augmented",
+    "MelodyMachine/Deepfake-audio-detection-V2",
 )
 
 # El checkpoint en español publica los pesos y config.json, pero no
@@ -160,10 +175,24 @@ def load_audio_ai_components():
 
 
 @lru_cache(maxsize=1)
+def load_video_ai_components():
+    return _prepare_image_model(
+        VIDEO_AI_MODEL_NAME
+    )
+
+
+@lru_cache(maxsize=1)
+def load_video_deepfake_components():
+    return _prepare_image_model(
+        VIDEO_DEEPFAKE_MODEL_NAME
+    )
+
+
+@lru_cache(maxsize=1)
 def load_audio_deepfake_components():
     return _prepare_audio_model(
         AUDIO_DEEPFAKE_MODEL_NAME,
-        AUDIO_FEATURE_EXTRACTOR_NAME,
+        AUDIO_DEEPFAKE_MODEL_NAME,
     )
 
 

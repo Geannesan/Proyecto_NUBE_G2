@@ -70,6 +70,16 @@ def build_model_reason(
         .upper()
     )
 
+    if detector_type == "comprehensive":
+        axes = result.metadata.get("axes", {})
+        generation = axes.get("generation", {}).get("status", "unknown")
+        manipulation = axes.get("manipulation", {}).get("status", "unknown")
+        return (
+            "Análisis integral con ejes independientes. "
+            f"Generación AI: {generation}; manipulación/deepfake: {manipulation}. "
+            "La suplantación de identidad requiere una referencia biométrica autorizada."
+        )
+
     if prediction == "INCONCLUSIVE":
         return (
             "El análisis no es concluyente porque "
