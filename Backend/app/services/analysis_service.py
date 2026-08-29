@@ -14,6 +14,7 @@ from app.detector.analyzer import (
 from app.detector.audio_detector import (
     analyze_audio,
 )
+from app.detector.comprehensive_detector import analyze_comprehensive
 from app.detector.image_ai_detector import (
     analyze_image_ai,
 )
@@ -39,6 +40,7 @@ MediaType = Literal[
 DetectorType = Literal[
     "ai",
     "deepfake",
+    "comprehensive",
 ]
 
 
@@ -58,6 +60,9 @@ def normalize_detector_type(
         "synthetic": "ai",
         "deepfake": "deepfake",
         "fake": "deepfake",
+        "comprehensive": "comprehensive",
+        "complete": "comprehensive",
+        "completo": "comprehensive",
     }
 
     normalized = aliases.get(
@@ -67,7 +72,7 @@ def normalize_detector_type(
     if normalized is None:
         raise ValueError(
             "detector_type debe ser "
-            "'ai' o 'deepfake'."
+            "'ai', 'deepfake' o 'comprehensive'."
         )
 
     return normalized  # type: ignore[return-value]
@@ -134,7 +139,14 @@ async def analyze_upload(
             media_type,
         )
 
-        if media_type == "image":
+        if normalized_detector == "comprehensive":
+            result = await run_in_threadpool(
+                analyze_comprehensive,
+                saved.path,
+                media_type,
+            )
+
+        elif media_type == "image":
             result = await run_in_threadpool(
                 _run_image_detector,
                 saved.path,
@@ -204,6 +216,9 @@ async def analyze_upload(
             ),
             model_name=(
                 result.model_name
+            ),
+            analysis_metadata=(
+                result.metadata
             ),
             processing_time_ms=(
                 processing_time_ms

@@ -6,6 +6,7 @@ from app.database.repositories import (
     count_grouped_by_media,
     count_grouped_by_prediction,
 )
+from app.services.validation_service import load_validation_report
 
 
 def get_dashboard_summary(
@@ -24,6 +25,8 @@ def get_dashboard_summary(
             "SYNTHETIC",
             "MANIPULATED",
             "SPOOF",
+            "DEEPFAKE",
+            "AI_AND_DEEPFAKE",
         }
     )
 
@@ -36,8 +39,12 @@ def get_dashboard_summary(
             "REAL",
             "AUTHENTIC",
             "BONAFIDE",
+            "REAL_HUMAN",
         }
     )
+
+    inconclusive = by_prediction.get("INCONCLUSIVE", 0)
+    validation_report = load_validation_report()
 
     return {
         "total_analyses": count_analyses(db),
@@ -47,6 +54,19 @@ def get_dashboard_summary(
         "synthetic_detected": suspicious,
         "authentic_detected": authentic,
         "average_confidence": average_confidence(db),
+        "average_model_confidence": average_confidence(db),
+        "inconclusive": inconclusive,
+        "validation": {
+            "ground_truth_available": validation_report is not None,
+            "metrics_by_media_and_axis": (
+                validation_report.get("groups", {}) if validation_report else {}
+            ),
+            "message": (
+                "Métricas calculadas con el dataset etiquetado configurado."
+                if validation_report
+                else "La confianza media no representa accuracy. Ejecute la evaluación offline con datos etiquetados."
+            ),
+        },
         "by_media_type": by_media,
         "by_prediction": by_prediction,
     }

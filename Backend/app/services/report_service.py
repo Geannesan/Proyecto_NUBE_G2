@@ -150,13 +150,65 @@ def create_pdf_report(
             y = height - 60
             pdf.setFont("Helvetica", 10)
 
+    metadata = record.analysis_metadata or {}
+    axes = metadata.get("axes", {})
+    if axes:
+        y -= 12
+        pdf.setFont("Helvetica-Bold", 12)
+        pdf.drawString(x, y, "Ejes independientes")
+        y -= 20
+        for axis_name in ("generation", "manipulation", "identity_impersonation"):
+            axis = axes.get(axis_name, {})
+            if not axis:
+                continue
+            pdf.setFont("Helvetica-Bold", 10)
+            pdf.drawString(x + 15, y, axis_name.replace("_", " ").title())
+            y -= 14
+            pdf.setFont("Helvetica", 9)
+            axis_text = (
+                f"Estado: {axis.get('status', 'unknown')}; "
+                f"resultado: {axis.get('prediction', 'no evaluado')}; "
+                f"confianza del modelo: {axis.get('confidence', 'N/A')}"
+            )
+            y = _write_wrapped_text(pdf, axis_text, x=x + 25, y=y, max_chars=85)
+            y -= 6
+
+    integrity = metadata.get("integrity", {})
+    if integrity:
+        y -= 8
+        pdf.setFont("Helvetica-Bold", 12)
+        pdf.drawString(x, y, "Integridad y trazabilidad")
+        y -= 18
+        pdf.setFont("Helvetica", 8)
+        y = _write_wrapped_text(
+            pdf,
+            f"SHA-256: {integrity.get('sha256', 'no disponible')}",
+            x=x + 15,
+            y=y,
+            max_chars=100,
+            line_height=12,
+        )
+        y -= 5
+        credentials = integrity.get("content_credentials", {})
+        credentials_status = (
+            credentials.get("status", "unknown")
+            if isinstance(credentials, dict)
+            else credentials
+        )
+        pdf.drawString(
+            x + 15,
+            y,
+            f"Procedencia: {integrity.get('provenance', 'unknown')}; "
+            f"Content Credentials: {credentials_status}",
+        )
+
     y -= 18
     pdf.setFont("Helvetica-Oblique", 8)
 
     disclaimer = (
-        "Este reporte representa una salida probabilística de "
+        "Este reporte separa generación, manipulación e identidad. Representa salidas probabilísticas de "
         "modelos de inteligencia artificial y no constituye por "
-        "sí solo una prueba forense concluyente."
+        "sí solo una prueba forense concluyente ni una medición de accuracy."
     )
 
     _write_wrapped_text(
