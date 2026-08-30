@@ -796,10 +796,97 @@ def analyze_audio_ai(
 def analyze_audio_deepfake(
     audio_path: str | Path,
 ) -> DetectionResult:
-    return _analyze_audio_with_model(
+    primary = _analyze_audio_with_model(
         audio_path=audio_path,
         detector_type="deepfake",
     )
+    corroborating = _analyze_audio_with_model(
+        audio_path=audio_path,
+        detector_type="ai",
+    )
+    return _fuse_deepfake_audio_results(primary, corroborating)
+
+
+def _fuse_deepfake_audio_results(
+    primary: DetectionResult,
+    corroborating: DetectionResult,
+) -> DetectionResult:
+    primary_aggregate = primary.metadata.get("aggregate", {})
+    output_range = abs(
+        float(primary_aggregate.get("fake_max", 0.0))
+        - float(primary_aggregate.get("fake_min", 0.0))
+    )
+    primary_collapsed = bool(
+        int(primary.metadata.get("chunk_count", 0)) > 1
+        and output_range <= 0.05
+    )
+
+    shared_metadata = {
+        **primary.metadata,
+        "inference_strategy": "deepfake_checkpoint_with_voice_ai_corroboration",
+        "primary_output_range": round(output_range, 4),
+        "primary_output_collapsed": primary_collapsed,
+        "checkpoint_results": {
+            primary.model_name: primary.as_dict(),
+            corroborating.model_name: corroborating.as_dict(),
+        },
+    }
+
+    if corroborating.prediction == "AI":
+        fake_probability = float(
+            corroborating.probabilities.get("AI", corroborating.confidence)
+        )
+        return DetectionResult(
+            prediction="DEEPFAKE",
+            confidence=fake_probability,
+            probabilities={
+                "DEEPFAKE": fake_probability,
+                "REAL": 100.0 - fake_probability,
+            },
+            model_name=(
+                f"ensemble:{primary.model_name}+{corroborating.model_name}"
+            ),
+            evidence=[
+                "El checkpoint independiente de voz generada o clonada "
+                f"detectó evidencia sintética en {fake_probability:.2f}%.",
+                "La decisión exige el umbral estricto y el acuerdo de "
+                "segmentos configurados para el corroborador.",
+                *(
+                    [
+                        "El checkpoint primario produjo una salida casi "
+                        "idéntica en segmentos acústicos distintos; su "
+                        "veredicto REAL se consideró no fiable."
+                    ]
+                    if primary_collapsed
+                    else []
+                ),
+            ],
+            raw_label="corroborated_fake_voice",
+            metadata=shared_metadata,
+        )
+
+    if primary_collapsed:
+        return DetectionResult(
+            prediction="INCONCLUSIVE",
+            confidence=max(
+                float(primary.confidence),
+                float(corroborating.confidence),
+            ),
+            probabilities={"DEEPFAKE": 0.0, "REAL": 0.0},
+            model_name=(
+                f"ensemble:{primary.model_name}+{corroborating.model_name}"
+            ),
+            evidence=[
+                "El checkpoint primario devolvió una salida colapsada en "
+                "segmentos acústicos distintos.",
+                "El corroborador no alcanzó evidencia suficiente para "
+                "declarar voz generada o clonada.",
+            ],
+            raw_label="inconclusive_model_output_collapse",
+            metadata=shared_metadata,
+        )
+
+    return primary
 
 
 def analyze_audio(

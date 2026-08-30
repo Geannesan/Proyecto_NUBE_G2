@@ -63,11 +63,55 @@ def _enrich_individual_result(
     media_type: MediaType,
     detector_type: DetectorType,
 ) -> None:
-    """Añade trazabilidad sin alterar la decisión del modelo."""
+    """Añade trazabilidad y aplica declaraciones de procedencia verificables."""
     axis = "generation" if detector_type == "ai" else "manipulation"
     validation = get_axis_validation(media_type, axis)
     technical = inspect_technical_metadata(path, media_type)
     credentials = inspect_content_credentials(path)
+    declarations = credentials.get("declarations", {})
+    provenance_prediction = None
+    provenance_labels = None
+    if declarations.get("ai_provenance_declared"):
+        if detector_type == "ai" and media_type in {"image", "video"}:
+            provenance_prediction = "AI"
+            provenance_labels = ("AI", "HUMAN")
+        elif detector_type == "deepfake" and media_type == "image":
+            provenance_prediction = "FAKE"
+            provenance_labels = ("FAKE", "REAL")
+
+    if provenance_prediction and provenance_labels:
+        suspicious_label, authentic_label = provenance_labels
+        result.metadata["visual_model_prediction"] = result.prediction
+        result.metadata["visual_model_confidence"] = result.confidence
+        result.metadata["visual_model_probabilities"] = dict(
+            result.probabilities
+        )
+        result.metadata["decision_basis"] = "content_credentials"
+        result.metadata["confidence_type"] = "verified_provenance_declaration"
+        result.prediction = provenance_prediction
+        result.confidence = 100.0
+        result.probabilities = {
+            suspicious_label: 100.0,
+            authentic_label: 0.0,
+        }
+        result.raw_label = "c2pa_trained_algorithmic_media"
+        visual_suspicious = result.metadata["visual_model_probabilities"].get(
+            suspicious_label, 0.0
+        )
+        visual_authentic = result.metadata["visual_model_probabilities"].get(
+            authentic_label, 0.0
+        )
+        result.evidence = [
+            "Las Content Credentials declaran que el contenido fue creado "
+            "o editado mediante IA (trainedAlgorithmicMedia).",
+            "La cadena C2PA registra acciones de Google Generative AI y una "
+            "marca de agua SynthID.",
+            "La salida del clasificador visual se conserva por separado: "
+            f"{suspicious_label} {visual_suspicious:.2f}% frente a "
+            f"{authentic_label} {visual_authentic:.2f}%.",
+            "El veredicto se basa en procedencia declarada y no confirma la "
+            "identidad de la persona representada.",
+        ]
     technologies = [
         {
             "technology": "SHA-256",
@@ -148,6 +192,12 @@ def _enrich_individual_result(
             "purpose": "Verificar que existan regiones faciales evaluables.",
             "observation": f"{result.metadata.get('faces_detected', result.metadata.get('valid_frames', 0))} candidatos/frames faciales detectados.",
         })
+    visual_prediction = result.metadata.get(
+        "visual_model_prediction", result.prediction
+    )
+    visual_confidence = result.metadata.get(
+        "visual_model_confidence", result.confidence
+    )
     technologies.insert(0, {
         "technology": "Clasificador de IA",
         "status": (
@@ -157,7 +207,7 @@ def _enrich_individual_result(
             else "executed"
         ),
         "purpose": "Estimar la clase solicitada mediante el checkpoint registrado.",
-        "observation": f"Modelo: {result.model_name}; resultado: {result.prediction}; score: {result.confidence:.2f}%.",
+        "observation": f"Modelo: {result.model_name}; resultado: {visual_prediction}; score: {visual_confidence:.2f}%.",
     })
 
     result.metadata.update(

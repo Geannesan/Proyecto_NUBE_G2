@@ -25,12 +25,65 @@ MIN_FACE_RATIO = float(
 MIN_BLUR_SCORE = float(
     os.getenv("DEEPFAKE_MIN_BLUR_SCORE", "55")
 )
+MIN_PRIMARY_FACE_AREA_RATIO = float(
+    os.getenv("DEEPFAKE_MIN_PRIMARY_FACE_AREA_RATIO", "2.0")
+)
 FAKE_THRESHOLD = float(
-    os.getenv("DEEPFAKE_FAKE_THRESHOLD", "98")
+    os.getenv("DEEPFAKE_FAKE_THRESHOLD", "60")
 )
 REAL_THRESHOLD = float(
-    os.getenv("DEEPFAKE_REAL_THRESHOLD", "85")
+    os.getenv("DEEPFAKE_REAL_THRESHOLD", "60")
 )
+
+
+def _classify_probabilities(
+    fake_probability: float,
+    real_probability: float,
+) -> tuple[str, str, float] | None:
+    """Return a verdict only when the winning class clears its threshold.
+
+    Checking the winning class prevents asymmetric thresholds from selecting a
+    lower-probability label.  The 60% defaults leave a narrow abstention band
+    around an essentially tied binary prediction and remain configurable until
+    project-specific calibration data is available.
+    """
+    if (
+        fake_probability > real_probability
+        and fake_probability >= FAKE_THRESHOLD
+    ):
+        return "FAKE", "Fake", fake_probability
+
+    if (
+        real_probability > fake_probability
+        and real_probability >= REAL_THRESHOLD
+    ):
+        return "REAL", "Real", real_probability
+
+    return None
+
+
+def _select_primary_face(
+    faces: Any,
+) -> tuple[tuple[int, int, int, int] | None, float | None]:
+    ordered = sorted(
+        (tuple(int(value) for value in face) for face in faces),
+        key=lambda face: face[2] * face[3],
+        reverse=True,
+    )
+
+    if not ordered:
+        return None, None
+    if len(ordered) == 1:
+        return ordered[0], None
+
+    largest_area = float(ordered[0][2] * ordered[0][3])
+    second_area = float(ordered[1][2] * ordered[1][3])
+    dominance_ratio = largest_area / max(second_area, 1.0)
+
+    if dominance_ratio < MIN_PRIMARY_FACE_AREA_RATIO:
+        return None, dominance_ratio
+
+    return ordered[0], dominance_ratio
 
 
 def _label_from_config(model, index: int) -> str:
@@ -156,17 +209,25 @@ def _prepare_face(
             "No se detectó un rostro frontal suficientemente visible.",
         )
 
-    if len(faces) > 1:
+    primary_face, dominance_ratio = _select_primary_face(faces)
+
+    if dominance_ratio is not None:
+        metadata["primary_face_area_ratio"] = round(dominance_ratio, 2)
+        metadata["primary_face_selection_threshold"] = (
+            MIN_PRIMARY_FACE_AREA_RATIO
+        )
+
+    if primary_face is None:
         return (
             None,
             metadata,
-            "Se detectaron varios rostros. Analice cada rostro "
-            "por separado para reducir falsos positivos.",
+            "Se detectaron varios rostros de tamaño similar. Analice cada "
+            "rostro por separado para reducir falsos positivos.",
         )
 
     x, y, width, height = [
         int(value)
-        for value in faces[0]
+        for value in primary_face
     ]
 
     face_ratio = (
@@ -181,6 +242,7 @@ def _prepare_face(
             "face_width": width,
             "face_height": height,
             "face_ratio": round(face_ratio, 4),
+            "primary_face_selected": len(faces) > 1,
         }
     )
 
@@ -367,15 +429,9 @@ def analyze_image_deepfake(
     average_real = float(np.mean([item["REAL"] for item in variant_results]))
     probabilities = {"FAKE": average_fake, "REAL": average_real}
 
-    if average_fake >= FAKE_THRESHOLD:
-        prediction = "FAKE"
-        raw_label = "Fake"
-        confidence = average_fake
-    elif average_real >= REAL_THRESHOLD:
-        prediction = "REAL"
-        raw_label = "Real"
-        confidence = average_real
-    else:
+    decision = _classify_probabilities(average_fake, average_real)
+
+    if decision is None:
         return _build_inconclusive_result(
             image=rgb_image,
             reason=(
@@ -393,6 +449,8 @@ def analyze_image_deepfake(
             probabilities=probabilities,
             confidence=max(average_fake, average_real),
         )
+
+    prediction, raw_label, confidence = decision
 
     evidence = [
         "Se validó un rostro frontal con tamaño y nitidez suficientes.",

@@ -22,6 +22,72 @@ def _manifest_summary(active) -> dict | None:
     return _json_safe(summary)
 
 
+def _provenance_declarations(reader, active: dict | None) -> dict:
+    """Collect signed AI declarations from the active manifest chain."""
+    pending = [active] if isinstance(active, dict) else []
+    visited: set[str] = set()
+    actions: list[dict] = []
+
+    while pending:
+        manifest = pending.pop()
+        label = str(manifest.get("label", ""))
+        if label and label in visited:
+            continue
+        if label:
+            visited.add(label)
+
+        for assertion in manifest.get("assertions", []) or []:
+            if not str(assertion.get("label", "")).startswith("c2pa.actions"):
+                continue
+            for action in assertion.get("data", {}).get("actions", []) or []:
+                actions.append(
+                    {
+                        key: action.get(key)
+                        for key in (
+                            "action",
+                            "digitalSourceType",
+                            "description",
+                        )
+                        if action.get(key) is not None
+                    }
+                )
+
+        for ingredient in manifest.get("ingredients", []) or []:
+            ingredient_label = ingredient.get("active_manifest")
+            if not ingredient_label or ingredient_label in visited:
+                continue
+            try:
+                ingredient_manifest = reader.get_manifest(ingredient_label)
+            except Exception:
+                ingredient_manifest = None
+            if isinstance(ingredient_manifest, dict):
+                pending.append(ingredient_manifest)
+
+    trained_actions = [
+        action
+        for action in actions
+        if str(action.get("digitalSourceType", "")).endswith(
+            "/trainedAlgorithmicMedia"
+        )
+    ]
+    created = any(
+        action.get("action") == "c2pa.created"
+        for action in trained_actions
+    )
+    edited = any(
+        action.get("action") == "c2pa.edited"
+        for action in trained_actions
+    )
+
+    return {
+        "ai_created_declared": created,
+        "ai_edited_declared": edited,
+        "ai_provenance_declared": created or edited,
+        "manifest_chain_depth": len(visited),
+        "declared_actions": _json_safe(actions),
+    }
+
+
 def inspect_content_credentials(path: str | Path) -> dict:
     """Valida C2PA cuando el SDK oficial está disponible.
 
@@ -43,6 +109,7 @@ def inspect_content_credentials(path: str | Path) -> dict:
         active = reader.get_active_manifest()
         state = str(reader.get_validation_state())
         results = reader.get_validation_results()
+        declarations = _provenance_declarations(reader, active)
         return {
             "status": "validated" if active else "not_present",
             "provenance": "credential_present" if active else "unknown",
@@ -50,8 +117,12 @@ def inspect_content_credentials(path: str | Path) -> dict:
             "validation_state": state,
             "validation_results": _json_safe(results),
             "active_manifest": _manifest_summary(active),
+            "declarations": declarations,
             "message": (
-                "Content Credentials encontradas y procesadas por el SDK oficial."
+                "Content Credentials declaran contenido creado o editado "
+                "mediante IA."
+                if declarations["ai_provenance_declared"]
+                else "Content Credentials encontradas y procesadas por el SDK oficial."
                 if active else "El archivo no contiene Content Credentials verificables."
             ),
         }

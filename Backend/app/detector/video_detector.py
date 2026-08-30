@@ -19,10 +19,16 @@ from app.detector.model_loader import (
 )
 
 
-MAX_VIDEO_FRAMES = int(os.getenv("MAX_VIDEO_FRAMES", "16"))
+MAX_VIDEO_FRAMES = int(os.getenv("MAX_VIDEO_FRAMES", "32"))
 VIDEO_THRESHOLD = float(os.getenv("VIDEO_THRESHOLD", "60"))
 VIDEO_HUMAN_THRESHOLD = float(os.getenv("VIDEO_HUMAN_THRESHOLD", "70"))
 MIN_VALID_VIDEO_FRAMES = int(os.getenv("MIN_VALID_VIDEO_FRAMES", "3"))
+MIN_SUSPICIOUS_VIDEO_FRAMES = int(
+    os.getenv("MIN_SUSPICIOUS_VIDEO_FRAMES", "2")
+)
+MIN_SUSPICIOUS_VIDEO_RATIO = float(
+    os.getenv("MIN_SUSPICIOUS_VIDEO_RATIO", "0.10")
+)
 
 
 def _model_label(model, index: int) -> str:
@@ -169,6 +175,13 @@ def _sample_frame_indexes(total_frames: int, sample_count: int) -> np.ndarray:
     return np.asarray(sorted(set(indexes)), dtype=int)
 
 
+def _required_suspicious_frames(valid_frame_count: int) -> int:
+    return max(
+        MIN_SUSPICIOUS_VIDEO_FRAMES,
+        int(np.ceil(valid_frame_count * MIN_SUSPICIOUS_VIDEO_RATIO)),
+    )
+
+
 def analyze_video(video_path: str | Path, detector_type: str = "deepfake") -> DetectionResult:
     path = Path(video_path)
     if not path.exists():
@@ -232,10 +245,24 @@ def analyze_video(video_path: str | Path, detector_type: str = "deepfake") -> De
         )
 
     scores = [_suspicious_probability(result, detector_type) for _, result in valid_results]
+    frame_scores = [
+        {
+            "frame": frame_index,
+            "time_seconds": round(frame_index / fps, 3) if fps > 0 else None,
+            "suspicious_score": round(
+                _suspicious_probability(result, detector_type), 2
+            ),
+            "prediction": result.prediction,
+            "confidence": round(float(result.confidence), 2),
+        }
+        for frame_index, result in valid_results
+    ]
     mean_score = float(np.mean(scores))
     median_score = float(np.median(scores))
     maximum_score = float(np.max(scores))
     vote_ratio = float(np.mean(np.asarray(scores) >= VIDEO_THRESHOLD))
+    suspicious_scores = [score for score in scores if score >= VIDEO_THRESHOLD]
+    required_suspicious_frames = _required_suspicious_frames(len(scores))
     per_model_medians: dict[str, float] = {}
     model_disagreement = 0.0
     if detector_type == "ai":
@@ -251,10 +278,12 @@ def analyze_video(video_path: str | Path, detector_type: str = "deepfake") -> De
             - per_model_medians[VIDEO_AI_SECONDARY_MODEL_NAME]
         )
 
-    # Los dos veredictos necesitan evidencia suficiente. La zona intermedia
-    # se conserva como inconclusa en vez de convertirla automáticamente en HUMAN.
-    if median_score >= VIDEO_THRESHOLD and vote_ratio >= 0.5:
-        prediction, confidence = suspicious_label, median_score
+    # Detectar un tramo manipulado basta para marcar el video completo. Usar la
+    # mediana global ocultaba deepfakes parciales detrás de intros y cierres
+    # auténticos. Se exigen varias muestras fuertes para ignorar picos aislados.
+    if len(suspicious_scores) >= required_suspicious_frames:
+        prediction = suspicious_label
+        confidence = float(np.mean(suspicious_scores))
     elif (100.0 - median_score) >= VIDEO_HUMAN_THRESHOLD:
         prediction, confidence = normal_label, 100.0 - median_score
     else:
@@ -265,17 +294,27 @@ def analyze_video(video_path: str | Path, detector_type: str = "deepfake") -> De
     suspicious_position = int(np.argmax(scores))
     suspicious_frame = valid_results[suspicious_position][0]
     base_model_name = valid_results[0][1].model_name
+    reported_suspicious_score = (
+        confidence if prediction == suspicious_label else median_score
+    )
 
     return DetectionResult(
         prediction=prediction,
         confidence=confidence,
-        probabilities={suspicious_label: median_score, normal_label: 100.0 - median_score},
+        probabilities={
+            suspicious_label: reported_suspicious_score,
+            normal_label: 100.0 - reported_suspicious_score,
+        },
         model_name=f"temporal-frame-aggregation:{base_model_name}",
         evidence=[
             f"Se usaron {len(valid_results)} de {len(frame_results)} fotogramas muestreados.",
             f"Mediana de sospecha: {median_score:.2f}%.",
             f"Promedio de sospecha: {mean_score:.2f}%.",
             f"Máxima sospecha: {maximum_score:.2f}% en el fotograma {suspicious_frame}.",
+            (
+                f"Muestras sobre el umbral: {len(suspicious_scores)}; "
+                f"mínimo requerido: {required_suspicious_frames}."
+            ),
             *(
                 [
                     "Medianas por checkpoint: "
@@ -301,12 +340,21 @@ def analyze_video(video_path: str | Path, detector_type: str = "deepfake") -> De
             "mean_suspicious_score": round(mean_score, 2),
             "median_suspicious_score": round(median_score, 2),
             "suspicious_vote_ratio": round(vote_ratio, 4),
+            "suspicious_frame_count": len(suspicious_scores),
+            "required_suspicious_frames": required_suspicious_frames,
             "per_model_median_scores": {
                 key: round(value, 2) for key, value in per_model_medians.items()
             },
             "model_disagreement_points": round(model_disagreement, 2),
             "quality": {
-                "score": round(max(0.0, 100.0 - model_disagreement), 2),
+                "score": round(
+                    max(
+                        0.0,
+                        (len(valid_results) / len(frame_results) * 100.0)
+                        - model_disagreement,
+                    ),
+                    2,
+                ),
                 "notes": [
                     "La calidad combina cobertura temporal y acuerdo entre checkpoints."
                 ],
@@ -315,5 +363,6 @@ def analyze_video(video_path: str | Path, detector_type: str = "deepfake") -> De
             "decision_threshold": VIDEO_THRESHOLD,
             "human_threshold": VIDEO_HUMAN_THRESHOLD,
             "minimum_recommended_valid_frames": MIN_VALID_VIDEO_FRAMES,
+            "frame_scores": frame_scores,
         },
     )
