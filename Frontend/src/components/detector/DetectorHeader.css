@@ -1,8 +1,74 @@
 .detect-editorial-intro {
   display: flex;
+  width: min(100%, 860px);
+  margin: 0 auto 10px;
+  padding: 2px 20px 10px;
   flex-direction: column;
-  align-items: flex-start;
+  align-items: center;
 }
 
-.detect-editorial-intro h1 { width: 100%; }
-.detect-editorial-intro p { position: static; width: 100%; margin-top: 1rem; }
+.detect-editorial-intro h1 {
+  width: 100%;
+  font-size: clamp(3.5rem, 5.8vw, 5.5rem);
+}
+.detect-editorial-intro p { position: static; width: 100%; margin-top: .6rem; }
+
+/* Mantiene los controles de prueba dentro de la primera pantalla. */
+.view-detect .content {
+  padding-top: 12px;
+}
+
+.view-detect .platform-nav {
+  margin-bottom: 16px;
+}
+
+.view-detect .media-switch button,
+.view-detect .sub-switch button {
+  min-height: 42px;
+}
+
+.view-detect .sub-switch {
+  margin-bottom: 10px;
+}
+
+.view-detect .metal-panel {
+  padding: 48px 20px 20px;
+}
+
+.view-detect .drop-area {
+  min-height: 210px;
+  padding: 14px 20px;
+}
+
+.view-detect .upload-icon {
+  width: 46px;
+  height: 46px;
+  margin-bottom: 4px;
+}
+
+.view-detect .drop-area h2 {
+  font-size: clamp(1.45rem, 2.6vw, 1.85rem);
+}
+
+.view-detect .drop-area > p {
+  font-size: clamp(1rem, 2vw, 1.2rem);
+}
+
+.view-detect .primary-button {
+  margin-top: 10px;
+}
+
+@media (max-width: 680px) {
+  .detect-editorial-intro {
+    margin-bottom: 10px;
+    padding: 4px 4px 12px;
+  }
+
+  .detect-editorial-intro h1 {
+    font-size: clamp(2.45rem, 12vw, 3.7rem);
+  }
+
+  .view-detect .platform-nav {
+    margin-bottom: 12px;
+  }
+}
