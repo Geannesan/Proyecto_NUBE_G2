@@ -833,15 +833,15 @@ def _fuse_deepfake_audio_results(
     }
 
     if corroborating.prediction == "AI":
-        fake_probability = float(
+        fake_probability = round(float(
             corroborating.probabilities.get("AI", corroborating.confidence)
-        )
+        ), 2)
         return DetectionResult(
             prediction="DEEPFAKE",
             confidence=fake_probability,
             probabilities={
                 "DEEPFAKE": fake_probability,
-                "REAL": 100.0 - fake_probability,
+                "REAL": round(100.0 - fake_probability, 2),
             },
             model_name=(
                 f"ensemble:{primary.model_name}+{corroborating.model_name}"

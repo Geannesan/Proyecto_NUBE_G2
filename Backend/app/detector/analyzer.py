@@ -70,6 +70,15 @@ def build_model_reason(
         .upper()
     )
 
+    reviewed_sample = result.metadata.get("reviewed_sample")
+    if reviewed_sample:
+        role = reviewed_sample.get("sample_role", "edited")
+        return (
+            f"El archivo coincide exactamente por SHA-256 con una muestra {role} "
+            "revisada y vinculada a su par. El 100% expresa certeza de la "
+            "coincidencia binaria; no es una probabilidad nueva del modelo."
+        )
+
     if detector_type == "comprehensive":
         axes = result.metadata.get("axes", {})
         generation = axes.get("generation", {}).get("status", "unknown")

@@ -29,6 +29,9 @@ MIN_SUSPICIOUS_VIDEO_FRAMES = int(
 MIN_SUSPICIOUS_VIDEO_RATIO = float(
     os.getenv("MIN_SUSPICIOUS_VIDEO_RATIO", "0.10")
 )
+FACE_CASCADE = cv2.CascadeClassifier(
+    cv2.data.haarcascades + "haarcascade_frontalface_default.xml"
+)
 
 
 def _model_label(model, index: int) -> str:
@@ -38,6 +41,13 @@ def _model_label(model, index: int) -> str:
 
 def _classify_frame(image: Image.Image, detector_type: str) -> DetectionResult:
     """Clasifica un fotograma con los modelos dedicados exclusivamente a video."""
+    rgb_array = np.asarray(image.convert("RGB"))
+    gray = cv2.cvtColor(rgb_array, cv2.COLOR_RGB2GRAY)
+    faces = FACE_CASCADE.detectMultiScale(
+        gray, scaleFactor=1.1, minNeighbors=5, minSize=(64, 64)
+    )
+    face_count = len(faces)
+
     if detector_type == "ai":
         processor, model, device = load_video_ai_components()
         normalize = normalize_ai_label
@@ -51,15 +61,7 @@ def _classify_frame(image: Image.Image, detector_type: str) -> DetectionResult:
 
         # El checkpoint deepfake es facial: se analiza el rostro dominante con
         # contexto alrededor, tal como fue diseñado el detector de referencia.
-        rgb_array = np.asarray(image.convert("RGB"))
-        gray = cv2.cvtColor(rgb_array, cv2.COLOR_RGB2GRAY)
-        cascade = cv2.CascadeClassifier(
-            cv2.data.haarcascades + "haarcascade_frontalface_default.xml"
-        )
-        faces = cascade.detectMultiScale(
-            gray, scaleFactor=1.1, minNeighbors=5, minSize=(64, 64)
-        )
-        if len(faces) == 0:
+        if face_count == 0:
             return DetectionResult(
                 prediction="INCONCLUSIVE",
                 confidence=0.0,
@@ -67,6 +69,7 @@ def _classify_frame(image: Image.Image, detector_type: str) -> DetectionResult:
                 model_name=model_name,
                 evidence=["No se detectó un rostro frontal en el fotograma."],
                 raw_label="inconclusive",
+                metadata={"faces_detected_in_frame": 0},
             )
         x, y, width, height = max(faces, key=lambda face: int(face[2]) * int(face[3]))
         margin = int(max(width, height) * 0.25)
@@ -134,6 +137,7 @@ def _classify_frame(image: Image.Image, detector_type: str) -> DetectionResult:
             model_name=model_name,
             evidence=[f"Etiquetas del modelo no reconocidas: {model.config.id2label}"],
             raw_label=raw_label,
+            metadata={"faces_detected_in_frame": face_count},
         )
 
     prediction = max(probabilities, key=probabilities.get)
@@ -144,7 +148,10 @@ def _classify_frame(image: Image.Image, detector_type: str) -> DetectionResult:
         model_name=model_name,
         evidence=[f"Fotograma clasificado por {model_name}."],
         raw_label=raw_label,
-        metadata={"model_probabilities": model_probabilities},
+        metadata={
+            "model_probabilities": model_probabilities,
+            "faces_detected_in_frame": face_count,
+        },
     )
 
 
@@ -180,6 +187,28 @@ def _required_suspicious_frames(valid_frame_count: int) -> int:
         MIN_SUSPICIOUS_VIDEO_FRAMES,
         int(np.ceil(valid_frame_count * MIN_SUSPICIOUS_VIDEO_RATIO)),
     )
+
+
+def _select_ai_temporal_signal(
+    per_model_scores: dict[str, list[float]], required_frames: int
+) -> tuple[str | None, list[float]]:
+    """Select a sustained AI signal without averaging incompatible checkpoints."""
+    candidates: list[tuple[float, str, list[float]]] = []
+    for model_name, scores in per_model_scores.items():
+        if not scores:
+            continue
+        suspicious = [score for score in scores if score >= VIDEO_THRESHOLD]
+        if len(suspicious) >= required_frames:
+            # Rank qualifying checkpoints by their sustained suspicious signal.
+            # Requiring the global median as well hid short or intermittent AI
+            # transformations in otherwise photorealistic videos.
+            strength = float(np.mean(suspicious))
+            candidates.append((strength, model_name, suspicious))
+
+    if not candidates:
+        return None, []
+    _, model_name, suspicious = max(candidates, key=lambda item: item[0])
+    return model_name, suspicious
 
 
 def analyze_video(video_path: str | Path, detector_type: str = "deepfake") -> DetectionResult:
@@ -221,6 +250,13 @@ def analyze_video(video_path: str | Path, detector_type: str = "deepfake") -> De
     normal_label = "HUMAN" if detector_type == "ai" else "REAL"
     valid_results = [item for item in frame_results if _is_valid_result(item[1], detector_type)]
     discarded_frames = len(frame_results) - len(valid_results)
+    face_counts = [
+        int(item.metadata.get("faces_detected_in_frame", 0))
+        for _, item in frame_results
+    ]
+    face_detections_total = sum(face_counts)
+    frames_with_faces = sum(count > 0 for count in face_counts)
+    max_faces_in_frame = max(face_counts, default=0)
     duration_seconds = total_frames / fps if fps > 0 else 0.0
 
     if not valid_results:
@@ -241,6 +277,9 @@ def analyze_video(video_path: str | Path, detector_type: str = "deepfake") -> De
                 "discarded_frames": discarded_frames,
                 "fps": round(fps, 2),
                 "duration_seconds": round(duration_seconds, 2),
+                "face_detections_total": face_detections_total,
+                "frames_with_faces": frames_with_faces,
+                "max_faces_in_frame": max_faces_in_frame,
             },
         )
 
@@ -264,7 +303,10 @@ def analyze_video(video_path: str | Path, detector_type: str = "deepfake") -> De
     suspicious_scores = [score for score in scores if score >= VIDEO_THRESHOLD]
     required_suspicious_frames = _required_suspicious_frames(len(scores))
     per_model_medians: dict[str, float] = {}
+    per_model_score_series: dict[str, list[float]] = {}
     model_disagreement = 0.0
+    ai_signal_model: str | None = None
+    ai_signal_scores: list[float] = []
     if detector_type == "ai":
         for configured_model in (VIDEO_AI_MODEL_NAME, VIDEO_AI_SECONDARY_MODEL_NAME):
             model_scores = [
@@ -272,16 +314,23 @@ def analyze_video(video_path: str | Path, detector_type: str = "deepfake") -> De
                       .get(configured_model, {}).get("AI", 0.0))
                 for _, item in valid_results
             ]
+            per_model_score_series[configured_model] = model_scores
             per_model_medians[configured_model] = float(np.median(model_scores))
         model_disagreement = abs(
             per_model_medians[VIDEO_AI_MODEL_NAME]
             - per_model_medians[VIDEO_AI_SECONDARY_MODEL_NAME]
         )
+        ai_signal_model, ai_signal_scores = _select_ai_temporal_signal(
+            per_model_score_series, required_suspicious_frames
+        )
 
     # Detectar un tramo manipulado basta para marcar el video completo. Usar la
     # mediana global ocultaba deepfakes parciales detrás de intros y cierres
     # auténticos. Se exigen varias muestras fuertes para ignorar picos aislados.
-    if len(suspicious_scores) >= required_suspicious_frames:
+    if detector_type == "ai" and ai_signal_model is not None:
+        prediction = suspicious_label
+        confidence = float(np.mean(ai_signal_scores))
+    elif len(suspicious_scores) >= required_suspicious_frames:
         prediction = suspicious_label
         confidence = float(np.mean(suspicious_scores))
     elif (100.0 - median_score) >= VIDEO_HUMAN_THRESHOLD:
@@ -336,6 +385,9 @@ def analyze_video(video_path: str | Path, detector_type: str = "deepfake") -> De
             "discarded_frames": discarded_frames,
             "fps": round(fps, 2),
             "duration_seconds": round(duration_seconds, 2),
+            "face_detections_total": face_detections_total,
+            "frames_with_faces": frames_with_faces,
+            "max_faces_in_frame": max_faces_in_frame,
             "maximum_suspicious_score": round(maximum_score, 2),
             "mean_suspicious_score": round(mean_score, 2),
             "median_suspicious_score": round(median_score, 2),
@@ -345,7 +397,18 @@ def analyze_video(video_path: str | Path, detector_type: str = "deepfake") -> De
             "per_model_median_scores": {
                 key: round(value, 2) for key, value in per_model_medians.items()
             },
+            "per_model_suspicious_frame_counts": {
+                key: sum(score >= VIDEO_THRESHOLD for score in values)
+                for key, values in per_model_score_series.items()
+            },
             "model_disagreement_points": round(model_disagreement, 2),
+            "ai_signal_model": ai_signal_model,
+            "ai_signal_frame_count": len(ai_signal_scores),
+            "decision_basis": (
+                "sustained_single_checkpoint_signal"
+                if ai_signal_model is not None
+                else "ensemble_temporal_signal"
+            ),
             "quality": {
                 "score": round(
                     max(

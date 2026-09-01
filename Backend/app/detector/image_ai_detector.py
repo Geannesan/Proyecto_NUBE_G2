@@ -1,13 +1,66 @@
+import os
 from collections import defaultdict
+from functools import lru_cache
+from pathlib import Path
 
 import torch
 from PIL import Image
+from torch import nn
+from torchvision import transforms
+from torchvision.models import efficientnet_b0
 
 from app.detector.detector import DetectionResult
 from app.detector.model_loader import (
     IMAGE_AI_MODEL_NAME,
     load_image_ai_components,
 )
+
+
+AI_EDITED_MODEL_PATH = Path(os.getenv(
+    "AI_EDITED_MODEL_PATH", "training_data/models/candidate_ai_edited.pt"
+))
+AI_EDITED_MIN_PROMOTION_PAIRS = int(os.getenv("AI_EDITED_MIN_PROMOTION_PAIRS", "30"))
+
+
+@lru_cache(maxsize=1)
+def _load_ai_edited_candidate():
+    if not AI_EDITED_MODEL_PATH.exists():
+        return None
+    checkpoint = torch.load(AI_EDITED_MODEL_PATH, map_location="cpu", weights_only=True)
+    model = efficientnet_b0(weights=None)
+    model.classifier[1] = nn.Linear(model.classifier[1].in_features, 2)
+    model.load_state_dict(checkpoint["state_dict"])
+    model.eval()
+    transform = transforms.Compose([
+        transforms.Resize((288, 288)),
+        transforms.CenterCrop(256),
+        transforms.ToTensor(),
+        transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225]),
+    ])
+    return model, transform, checkpoint
+
+
+def _run_ai_edited_candidate(image: Image.Image) -> dict | None:
+    loaded = _load_ai_edited_candidate()
+    if loaded is None:
+        return None
+    model, transform, checkpoint = loaded
+    with torch.inference_mode():
+        probabilities = torch.softmax(model(transform(image).unsqueeze(0)), dim=1)[0]
+    edited_probability = float(probabilities[1].item() * 100.0)
+    real_probability = float(probabilities[0].item() * 100.0)
+    total_pairs = int(checkpoint.get("training_pairs", 0)) + int(checkpoint.get("validation_pairs", 0))
+    return {
+        "status": "shadow" if total_pairs < AI_EDITED_MIN_PROMOTION_PAIRS else "eligible_for_evaluation",
+        "prediction": "AI_EDITED" if edited_probability >= real_probability else "REAL",
+        "probabilities": {"AI_EDITED": edited_probability, "REAL": real_probability},
+        "validation_accuracy": float(checkpoint.get("validation_accuracy", 0.0) * 100.0),
+        "training_pairs": int(checkpoint.get("training_pairs", 0)),
+        "validation_pairs": int(checkpoint.get("validation_pairs", 0)),
+        "minimum_promotion_pairs": AI_EDITED_MIN_PROMOTION_PAIRS,
+        "decision_contribution": False,
+        "model": "EfficientNet-B0 REAL_vs_AI_EDITED candidate",
+    }
 
 
 def _label_from_config(model, index: int) -> str:
@@ -57,6 +110,7 @@ def analyze_image_ai(
     processor, model, device = load_image_ai_components()
 
     rgb_image = image.convert("RGB")
+    ai_edited_candidate = _run_ai_edited_candidate(rgb_image)
 
     inputs = processor(
         images=rgb_image,
@@ -133,6 +187,11 @@ def analyze_image_ai(
         "La confianza es una probabilidad del modelo y no una "
         "prueba forense definitiva.",
     ]
+    if ai_edited_candidate:
+        evidence.append(
+            "El candidato REAL vs AI_EDITED se ejecutó en modo shadow; "
+            "su score se registra, pero todavía no modifica el veredicto."
+        )
 
     return DetectionResult(
         prediction=prediction,
@@ -144,5 +203,6 @@ def analyze_image_ai(
         metadata={
             "image_width": rgb_image.width,
             "image_height": rgb_image.height,
+            "ai_edited_candidate": ai_edited_candidate,
         },
     )

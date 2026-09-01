@@ -34,6 +34,9 @@ FAKE_THRESHOLD = float(
 REAL_THRESHOLD = float(
     os.getenv("DEEPFAKE_REAL_THRESHOLD", "60")
 )
+MAX_GROUP_FACES = int(os.getenv("DEEPFAKE_MAX_GROUP_FACES", "12"))
+GROUP_MIN_FACE_SIDE = int(os.getenv("DEEPFAKE_GROUP_MIN_FACE_SIDE", "80"))
+GROUP_MIN_BLUR_SCORE = float(os.getenv("DEEPFAKE_GROUP_MIN_BLUR_SCORE", "35"))
 
 
 def _classify_probabilities(
@@ -60,6 +63,17 @@ def _classify_probabilities(
         return "REAL", "Real", real_probability
 
     return None
+
+
+def _has_fake_consensus(face_results: list[dict[str, Any]]) -> bool:
+    """Apply the normal threshold to a portrait and stricter rules to groups."""
+    fake_faces = [item for item in face_results if item["FAKE"] >= FAKE_THRESHOLD]
+    if not fake_faces:
+        return False
+    if len(face_results) == 1:
+        return True
+    strongest_fake = max(item["FAKE"] for item in fake_faces)
+    return len(fake_faces) >= 2 or strongest_fake >= 85.0
 
 
 def _select_primary_face(
@@ -386,6 +400,63 @@ def _predict_probabilities(
     return dict(normalized_probabilities), raw_label
 
 
+def _prepare_face_set(
+    image: Image.Image,
+) -> tuple[list[tuple[Image.Image, dict[str, Any]]], dict[str, Any], str | None]:
+    """Prepara varios rostros para fotografías grupales."""
+    rgb_image = ImageOps.exif_transpose(image).convert("RGB")
+    gray = cv2.cvtColor(np.asarray(rgb_image), cv2.COLOR_RGB2GRAY)
+    cascade_path = cv2.data.haarcascades + "haarcascade_frontalface_default.xml"
+    detector = cv2.CascadeClassifier(cascade_path)
+    if detector.empty():
+        return [], {"faces_detected": 0, "cascade_path": cascade_path}, "No se pudo inicializar el detector facial de OpenCV."
+    detected = detector.detectMultiScale(
+        gray, scaleFactor=1.1, minNeighbors=5,
+        minSize=(GROUP_MIN_FACE_SIDE, GROUP_MIN_FACE_SIDE),
+    )
+    ordered = sorted(
+        (tuple(int(value) for value in face) for face in detected),
+        key=lambda face: face[2] * face[3], reverse=True,
+    )[:MAX_GROUP_FACES]
+    prepared: list[tuple[Image.Image, dict[str, Any]]] = []
+    rejected: list[dict[str, Any]] = []
+    required_face_side = MIN_FACE_SIDE if len(ordered) == 1 else GROUP_MIN_FACE_SIDE
+    for index, (x, y, width, height) in enumerate(ordered):
+        margin = int(max(width, height) * 0.25)
+        crop = rgb_image.crop((
+            max(0, x - margin), max(0, y - margin),
+            min(rgb_image.width, x + width + margin),
+            min(rgb_image.height, y + height + margin),
+        ))
+        crop_gray = cv2.cvtColor(np.asarray(crop), cv2.COLOR_RGB2GRAY)
+        blur_score = float(cv2.Laplacian(crop_gray, cv2.CV_64F).var())
+        details = {
+            "face_index": index + 1, "x": x, "y": y,
+            "width": width, "height": height,
+            "area_percent": round(width * height / max(1, rgb_image.width * rgb_image.height) * 100, 2),
+            "blur_score": round(blur_score, 2),
+        }
+        if min(width, height) < required_face_side:
+            rejected.append({
+                **details,
+                "reason": "face_too_small",
+                "minimum_face_side": required_face_side,
+            })
+        elif blur_score < GROUP_MIN_BLUR_SCORE:
+            rejected.append({**details, "reason": "low_detail"})
+        else:
+            prepared.append((crop, details))
+    metadata = {
+        "faces_detected": len(ordered), "faces_evaluable": len(prepared),
+        "faces_rejected": rejected, "group_face_limit": MAX_GROUP_FACES,
+    }
+    if not ordered:
+        return [], metadata, "No se detectó un rostro frontal suficientemente visible."
+    if not prepared:
+        return [], metadata, "Se detectaron rostros, pero ninguno conservó detalle suficiente para la inferencia."
+    return prepared, metadata, None
+
+
 def analyze_image_deepfake(
     image: Image.Image,
 ) -> DetectionResult:
@@ -393,11 +464,9 @@ def analyze_image_deepfake(
         image
     ).convert("RGB")
 
-    face_crop, face_metadata, quality_error = _prepare_face(
-        rgb_image
-    )
+    face_set, face_metadata, quality_error = _prepare_face_set(rgb_image)
 
-    if face_crop is None:
+    if not face_set:
         return _build_inconclusive_result(
             image=rgb_image,
             reason=quality_error or "No existe evidencia facial evaluable.",
@@ -408,28 +477,42 @@ def analyze_image_deepfake(
         load_image_deepfake_components()
     )
 
-    variant_results: list[dict[str, Any]] = []
-    for variant_name, variant in _create_variants(face_crop):
-        variant_probabilities, variant_raw_label = _predict_probabilities(
-            image=variant,
-            processor=processor,
-            model=model,
-            device=device,
-        )
-        variant_results.append(
-            {
-                "variant": variant_name,
-                "raw_label": variant_raw_label,
+    face_results: list[dict[str, Any]] = []
+    for face_crop, face_details in face_set:
+        variants: list[dict[str, Any]] = []
+        for variant_name, variant in _create_variants(face_crop):
+            variant_probabilities, variant_raw_label = _predict_probabilities(
+                image=variant, processor=processor, model=model, device=device,
+            )
+            variants.append({
+                "variant": variant_name, "raw_label": variant_raw_label,
                 "FAKE": float(variant_probabilities.get("FAKE", 0.0)),
                 "REAL": float(variant_probabilities.get("REAL", 0.0)),
-            }
+            })
+        face_results.append({
+            **face_details,
+            "FAKE": round(float(np.mean([item["FAKE"] for item in variants])), 4),
+            "REAL": round(float(np.mean([item["REAL"] for item in variants])), 4),
+            "variants": variants,
+        })
+
+    real_faces = [item for item in face_results if item["REAL"] >= REAL_THRESHOLD]
+    strongest_fake = max((item["FAKE"] for item in face_results), default=0.0)
+    real_agreement = len(real_faces) / max(1, len(face_results))
+    fake_decision = _has_fake_consensus(face_results)
+    if fake_decision:
+        average_fake = strongest_fake
+        average_real = 100.0 - average_fake
+        decision = ("FAKE", "Fake", average_fake)
+    else:
+        average_real = float(np.mean([item["REAL"] for item in face_results]))
+        average_fake = 100.0 - average_real
+        decision = (
+            ("REAL", "Real", average_real)
+            if real_agreement >= 0.6 and average_real >= REAL_THRESHOLD
+            else None
         )
-
-    average_fake = float(np.mean([item["FAKE"] for item in variant_results]))
-    average_real = float(np.mean([item["REAL"] for item in variant_results]))
     probabilities = {"FAKE": average_fake, "REAL": average_real}
-
-    decision = _classify_probabilities(average_fake, average_real)
 
     if decision is None:
         return _build_inconclusive_result(
@@ -441,8 +524,9 @@ def analyze_image_deepfake(
             ),
             metadata={
                 **face_metadata,
-                "inference_strategy": "single_face_multi_view_thresholded",
-                "variant_results": variant_results,
+                "inference_strategy": "multi_face_multi_view_thresholded",
+                "face_results": face_results,
+                "real_face_agreement_percent": round(real_agreement * 100, 2),
                 "fake_threshold": FAKE_THRESHOLD,
                 "real_threshold": REAL_THRESHOLD,
             },
@@ -453,9 +537,9 @@ def analyze_image_deepfake(
     prediction, raw_label, confidence = decision
 
     evidence = [
-        "Se validó un rostro frontal con tamaño y nitidez suficientes.",
-        "El rostro se contrastó en tres variantes para comprobar "
-        "la estabilidad de la predicción.",
+        f"Se evaluaron {len(face_results)} de {face_metadata['faces_detected']} rostros detectados.",
+        "Cada rostro se contrastó en tres variantes para comprobar la estabilidad de la predicción.",
+        f"Acuerdo de rostros clasificados como reales: {real_agreement * 100:.2f}%.",
         f"Probabilidad media {prediction}: {confidence:.2f}%.",
         "La salida es probabilística y no constituye una prueba "
         "forense definitiva.",
@@ -465,8 +549,11 @@ def analyze_image_deepfake(
         "image_width": rgb_image.width,
         "image_height": rgb_image.height,
         **face_metadata,
-        "inference_strategy": "single_face_multi_view_thresholded",
-        "variant_results": variant_results,
+        "quality_ok": True,
+        "quality_reason": f"{len(face_results)} rostros con detalle suficiente.",
+        "inference_strategy": "multi_face_multi_view_thresholded",
+        "face_results": face_results,
+        "real_face_agreement_percent": round(real_agreement * 100, 2),
         "fake_threshold": FAKE_THRESHOLD,
         "real_threshold": REAL_THRESHOLD,
     }
