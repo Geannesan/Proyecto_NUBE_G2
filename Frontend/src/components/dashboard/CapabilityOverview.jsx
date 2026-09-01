@@ -1,10 +1,10 @@
 import "./CapabilityOverview.css";
 
-export default function CapabilityOverview({ onDetect, onHistory }) {
+export default function CapabilityOverview({ onDetect, onHistory, onDevelopers }) {
   const modules = [
     ["01", "Detección multimodal", "Workspaces independientes para imagen, audio y video; cada filtro ejecuta únicamente el eje seleccionado.", onDetect, "Iniciar análisis"],
     ["02", "Auditoría y trazabilidad", "Casos persistidos en PostgreSQL con modelo, score, SHA-256, metadatos y reporte PDF regenerado en memoria.", onHistory, "Explorar casos"],
-    ["03", "Evidencia técnica", "Lectura C2PA, EXIF/IPTC/XMP, estructura JPEG y cobertura temporal o acústica según el formato.", onDetect, "Ver detectores"],
+    ["03", "API para integraciones", "Conecta tus aplicaciones con endpoints REST para analizar imagen, audio y video, consultar resultados y generar reportes auditables.", onDevelopers, "Explorar API"],
   ];
 
   return (

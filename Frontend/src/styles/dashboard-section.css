@@ -33,6 +33,10 @@
 .view-home .chart-title-row h3, .view-home .donut-card h3,
 .view-home .dashboard-donut span, .view-home .detector-split b,
 .view-home .confidence-band-list strong { color: var(--lab-ivory); }
+.view-home .charts-grid .chart-card:first-child .chart-title-row > strong {
+  color: var(--lab-accent-primary);
+  text-shadow: 0 0 18px rgba(56, 189, 248, .42);
+}
 .view-home .bar-row > div:first-child, .view-home .donut-card p,
 .view-home .detector-split span, .view-home .confidence-band-list > div,
 .view-home .activity-columns > div { color: var(--lab-muted); }
