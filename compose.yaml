@@ -24,6 +24,7 @@ services:
     volumes:
       - huggingface-cache:/home/app/.cache/huggingface
       - uploads-data:/app/uploads
+      - ./Backend/training_data:/app/training_data
 
     env_file:
       - path: .env
