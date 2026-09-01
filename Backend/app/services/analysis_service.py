@@ -30,6 +30,8 @@ from app.services.file_service import (
     delete_saved_upload,
     save_upload,
 )
+from app.services.reference_comparison_service import compare_with_original
+from app.services.training_data_service import find_reviewed_sample, register_ai_edited_pair
 from app.services.metadata_service import inspect_technical_metadata
 from app.services.provenance_service import inspect_content_credentials
 from app.services.validation_service import get_axis_validation
@@ -56,6 +58,42 @@ def _file_sha256(path: Path) -> str:
     return digest.hexdigest()
 
 
+def _operational_evidence_quality(result, technical: dict, media_type: str) -> dict:
+    """Índice técnico reproducible; no representa accuracy ni calibración."""
+    confidence = max(0.0, min(100.0, float(result.confidence or 0.0)))
+    separation = max(0.0, min(100.0, abs(confidence - 50.0) * 2.0))
+    trace_coverage = 0.0
+    if media_type == "image":
+        width = int(technical.get("width") or 0)
+        height = int(technical.get("height") or 0)
+        input_quality = min(100.0, min(width, height) / 512.0 * 100.0)
+        trace_coverage = float(
+            technical.get("forensic_metadata", {})
+            .get("statistics", {})
+            .get("metadata_coverage_percent", 0.0)
+        )
+    elif media_type == "video":
+        sampled = int(result.metadata.get("sampled_frames", 0))
+        valid = int(result.metadata.get("valid_frames", 0))
+        input_quality = (valid / sampled * 100.0) if sampled else 60.0
+        trace_coverage = 100.0 if technical.get("status") == "available" else 0.0
+    else:
+        clipping = max(0.0, min(1.0, float(result.metadata.get("clipping_ratio", 0.0))))
+        input_quality = (1.0 - clipping) * 100.0
+        trace_coverage = 100.0 if technical.get("status") == "available" else 0.0
+    score = 0.45 * input_quality + 0.35 * separation + 0.20 * trace_coverage
+    return {
+        "score": round(max(0.0, min(100.0, score)), 2),
+        "method": "0.45 calidad de entrada + 0.35 separación del score + 0.20 cobertura técnica",
+        "components": {
+            "input_quality_percent": round(input_quality, 2),
+            "model_separation_percent": round(separation, 2),
+            "technical_coverage_percent": round(trace_coverage, 2),
+        },
+        "interpretation": "Índice operativo de suficiencia de evidencia; no equivale a accuracy.",
+    }
+
+
 def _enrich_individual_result(
     *,
     result,
@@ -67,6 +105,13 @@ def _enrich_individual_result(
     axis = "generation" if detector_type == "ai" else "manipulation"
     validation = get_axis_validation(media_type, axis)
     technical = inspect_technical_metadata(path, media_type)
+    if media_type == "image":
+        for key in ("faces_detected", "face_detection_status", "largest_face_area_percent", "face_detector"):
+            if key in technical:
+                result.metadata.setdefault(key, technical[key])
+    result.metadata.setdefault(
+        "quality", _operational_evidence_quality(result, technical, media_type)
+    )
     credentials = inspect_content_credentials(path)
     declarations = credentials.get("declarations", {})
     provenance_prediction = None
@@ -185,12 +230,62 @@ def _enrich_individual_result(
             "purpose": "Contrastar varios tramos de la señal.",
             "observation": f"{result.metadata.get('chunk_count', 0)} segmentos analizados.",
         })
-    if detector_type == "deepfake" and media_type in {"image", "video"}:
+    if media_type == "image":
         technologies.append({
             "technology": "Detección facial OpenCV",
             "status": "executed",
-            "purpose": "Verificar que existan regiones faciales evaluables.",
-            "observation": f"{result.metadata.get('faces_detected', result.metadata.get('valid_frames', 0))} candidatos/frames faciales detectados.",
+            "purpose": "Contar regiones faciales candidatas independientemente del veredicto.",
+            "observation": f"{result.metadata.get('faces_detected', 0)} candidatos faciales; mayor rostro: {result.metadata.get('largest_face_area_percent', 0)}% del área.",
+        })
+    elif media_type == "video":
+        technologies.append({
+            "technology": "Detección facial OpenCV", "status": "executed",
+            "purpose": "Contar regiones faciales candidatas en los fotogramas muestreados.",
+            "observation": (
+                f"{result.metadata.get('face_detections_total', 0)} detecciones faciales "
+                f"en {result.metadata.get('frames_with_faces', 0)} fotogramas; "
+                f"máximo {result.metadata.get('max_faces_in_frame', 0)} en un fotograma."
+            ),
+        })
+    comparison = result.metadata.get("reference_comparison")
+    if comparison:
+        technologies.append({
+            "technology": "Comparación con original",
+            "status": "executed",
+            "purpose": "Alinear la escena y medir cambios visuales respecto de una referencia aportada.",
+            "observation": (
+                f"Estado: {comparison.get('status')}; "
+                f"área cambiada: {comparison.get('changed_area_over_25_percent', 0)}%; "
+                f"coincidencias: {comparison.get('feature_matches', 0)}; "
+                f"SHA-256 referencia: {comparison.get('reference_sha256', 'N/D')}."
+            ),
+        })
+    reviewed_sample = result.metadata.get("reviewed_sample")
+    if reviewed_sample:
+        technologies.append({
+            "technology": "Registro supervisado de pares",
+            "status": "executed",
+            "purpose": "Reconocer archivos exactos cuya etiqueta y original ya fueron revisados.",
+            "observation": (
+                f"Coincidencia SHA-256 exacta; rol {reviewed_sample.get('sample_role')}; "
+                f"etiqueta del par {reviewed_sample.get('label')}; "
+                f"par {reviewed_sample.get('pair_id')}. No es probabilidad del modelo."
+            ),
+        })
+    ai_edited_candidate = result.metadata.get("ai_edited_candidate")
+    if ai_edited_candidate:
+        candidate_probabilities = ai_edited_candidate.get("probabilities", {})
+        technologies.append({
+            "technology": "Candidato AI_EDITED",
+            "status": "executed_shadow",
+            "purpose": "Distinguir ediciones localizadas con IA de fotografías reales.",
+            "observation": (
+                f"AI_EDITED: {candidate_probabilities.get('AI_EDITED', 0):.2f}%; "
+                f"REAL: {candidate_probabilities.get('REAL', 0):.2f}%; "
+                f"validación interna: {ai_edited_candidate.get('validation_accuracy', 0):.2f}%; "
+                f"pares: {ai_edited_candidate.get('training_pairs', 0) + ai_edited_candidate.get('validation_pairs', 0)}/"
+                f"{ai_edited_candidate.get('minimum_promotion_pairs', 30)}. No contribuye aún al veredicto."
+            ),
         })
     visual_prediction = result.metadata.get(
         "visual_model_prediction", result.prediction
@@ -199,11 +294,15 @@ def _enrich_individual_result(
         "visual_model_confidence", result.confidence
     )
     technologies.insert(0, {
-        "technology": "Clasificador de IA",
+        "technology": (
+            "Clasificador deepfake"
+            if detector_type == "deepfake"
+            else "Clasificador de IA"
+        ),
         "status": (
             "not_executed"
             if detector_type == "deepfake" and media_type == "image"
-            and not result.metadata.get("quality_ok", True)
+            and not result.metadata.get("face_results")
             else "executed"
         ),
         "purpose": "Estimar la clase solicitada mediante el checkpoint registrado.",
@@ -311,6 +410,8 @@ async def analyze_upload(
     media_type: MediaType,
     detector_type: str,
     db: Session,
+    reference_upload: UploadFile | None = None,
+    contribute_training: bool = False,
 ) -> dict:
     normalized_detector = (
         normalize_detector_type(
@@ -319,6 +420,7 @@ async def analyze_upload(
     )
 
     saved: SavedUpload | None = None
+    reference_saved: SavedUpload | None = None
     started_at = perf_counter()
 
     try:
@@ -326,6 +428,10 @@ async def analyze_upload(
             upload,
             media_type,
         )
+        if reference_upload is not None:
+            if media_type != "image":
+                raise ValueError("La referencia original solo está disponible para imágenes.")
+            reference_saved = await save_upload(reference_upload, "image")
 
         if normalized_detector == "comprehensive":
             result = await run_in_threadpool(
@@ -360,6 +466,59 @@ async def analyze_upload(
                 "Tipo multimedia no soportado: "
                 f"{media_type}"
             )
+
+        reviewed_sample = await run_in_threadpool(find_reviewed_sample, saved.path)
+        if reviewed_sample is not None and normalized_detector in {"ai", "deepfake"}:
+            suspicious = "AI" if normalized_detector == "ai" else "FAKE"
+            authentic = "HUMAN" if normalized_detector == "ai" else "REAL"
+            is_original = reviewed_sample.get("sample_role") == "original"
+            prediction = authentic if is_original else suspicious
+            alternative = suspicious if is_original else authentic
+            result.prediction = prediction
+            result.confidence = 100.0
+            result.probabilities = {prediction: 100.0, alternative: 0.0}
+            result.raw_label = (
+                "reviewed_original_sample" if is_original
+                else "reviewed_edited_sample"
+            )
+            result.model_name = f"{result.model_name}+reviewed-sample-registry"
+            result.metadata["reviewed_sample"] = reviewed_sample
+            result.evidence = [
+                f"Coincidencia SHA-256 exacta con una muestra {reviewed_sample['sample_role']} revisada.",
+                "La etiqueta procede del corpus supervisado y no de una nueva inferencia del clasificador.",
+                f"Par revisado: {reviewed_sample['pair_id']}.",
+                *result.evidence,
+            ]
+
+        if reference_saved is not None:
+            comparison = await run_in_threadpool(
+                compare_with_original, saved.path, reference_saved.path
+            )
+            comparison["reference_filename"] = reference_saved.original_filename
+            result.metadata["reference_comparison"] = comparison
+            if comparison["changes_confirmed"]:
+                suspicious = "AI" if normalized_detector == "ai" else "FAKE"
+                authentic = "HUMAN" if normalized_detector == "ai" else "REAL"
+                score = float(comparison["confidence"])
+                result.prediction = suspicious
+                result.confidence = score
+                result.probabilities = {suspicious: score, authentic: 100.0 - score}
+                result.raw_label = "reference_assisted_visual_manipulation"
+                result.model_name = f"{result.model_name}+reference-change-detector"
+                result.evidence = [
+                    f"La imagen fue alineada con la referencia original mediante {comparison['feature_matches']} coincidencias visuales.",
+                    f"Se confirmó cambio sustancial en {comparison['changed_area_over_25_percent']}% del área comparable.",
+                    "El cotejo incluye cambios de escena, texto, vestuario y regiones faciales.",
+                    comparison["caveat"],
+                    *result.evidence,
+                ]
+                if contribute_training:
+                    result.metadata["training_contribution"] = await run_in_threadpool(
+                        register_ai_edited_pair,
+                        edited=saved,
+                        original=reference_saved,
+                        comparison=comparison,
+                    )
 
         if normalized_detector != "comprehensive":
             _enrich_individual_result(
@@ -446,4 +605,5 @@ async def analyze_upload(
         delete_saved_upload(
             saved
         )
+        delete_saved_upload(reference_saved)
         raise

@@ -37,6 +37,8 @@ def _http_error(error: Exception) -> HTTPException:
 @router.post("/analyze")
 async def analyze_image_route(
     file: UploadFile = File(...),
+    reference_file: UploadFile | None = File(None),
+    contribute_training: bool = Form(False),
     detector_type: str = Form("ai"),
     db: Session = Depends(get_db),
 ):
@@ -46,6 +48,8 @@ async def analyze_image_route(
             media_type="image",
             detector_type=detector_type,
             db=db,
+            reference_upload=reference_file,
+            contribute_training=contribute_training,
         )
     except Exception as error:
         raise _http_error(error) from error

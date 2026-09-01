@@ -4,7 +4,9 @@ import subprocess
 from datetime import datetime
 from pathlib import Path
 
-from PIL import ExifTags, Image, IptcImagePlugin
+import cv2
+import numpy as np
+from PIL import ExifTags, Image, ImageOps, IptcImagePlugin
 
 
 def _safe_text(value, limit: int = 240) -> str:
@@ -64,9 +66,42 @@ def _parse_exif_date(value):
         return None
 
 
+def _face_candidates(image: Image.Image) -> dict:
+    """Cuenta candidatos con la misma configuración del detector deepfake."""
+    rgb = ImageOps.exif_transpose(image).convert("RGB")
+    gray = cv2.cvtColor(np.asarray(rgb), cv2.COLOR_RGB2GRAY)
+    cascade_path = cv2.data.haarcascades + "haarcascade_frontalface_default.xml"
+    cascade = cv2.CascadeClassifier(cascade_path)
+    if cascade.empty():
+        return {"faces_detected": 0, "face_detection_status": "unavailable"}
+    faces = cascade.detectMultiScale(
+        gray, scaleFactor=1.1, minNeighbors=5, minSize=(80, 80)
+    )
+    # Deepfake ordena por área y procesa como máximo 12 candidatos. Mantener
+    # aquí el mismo criterio evita que IA muestre falsos rostros pequeños o un
+    # conteo diferente para el mismo archivo.
+    faces = sorted(
+        (tuple(int(value) for value in face) for face in faces),
+        key=lambda face: face[2] * face[3],
+        reverse=True,
+    )[:12]
+    largest_ratio = max(
+        (float(width * height) / float(max(1, rgb.width * rgb.height))
+         for _, _, width, height in faces),
+        default=0.0,
+    )
+    return {
+        "faces_detected": int(len(faces)),
+        "face_detection_status": "executed",
+        "largest_face_area_percent": round(largest_ratio * 100, 2),
+        "face_detector": "OpenCV Haar frontal-face (criterio Deepfake 80px)",
+    }
+
+
 def _image_metadata(path: Path) -> dict:
     raw = path.read_bytes()
     with Image.open(path) as image:
+        face_analysis = _face_candidates(image)
         exif = {ExifTags.TAGS.get(key, str(key)): _safe_text(value) for key, value in image.getexif().items()}
         try:
             iptc = {str(key): _safe_text(value) for key, value in (IptcImagePlugin.getiptcinfo(image) or {}).items()}
@@ -82,7 +117,9 @@ def _image_metadata(path: Path) -> dict:
         deviation = abs(ratio - nearest_value) / nearest_value * 100
         dates = {"original": exif.get("DateTimeOriginal"), "digitized": exif.get("DateTimeDigitized"), "modified_declared": exif.get("DateTime")}
         comparable = [value for value in (_parse_exif_date(value) for value in dates.values()) if value]
-        temporal_status = "not_assessable" if len(comparable) < 2 else ("consistent" if comparable == sorted(comparable) else "attention")
+        temporal_status = "no_declared_conflict" if len(comparable) < 2 else ("consistent" if comparable == sorted(comparable) else "attention")
+        temporal_finding_status = temporal_status if temporal_status in {"consistent", "attention"} else "observed"
+        temporal_coverage = round(len(comparable) / len(dates) * 100, 1)
         thumbnail = bool(exif.get("JPEGInterchangeFormat") and exif.get("JPEGInterchangeFormatLength"))
         expected = {"JPEG": {".jpg", ".jpeg", ".jpe"}, "PNG": {".png"}, "WEBP": {".webp"}, "TIFF": {".tif", ".tiff"}}
         extension_consistent = path.suffix.lower() in expected.get(image.format, {path.suffix.lower()})
@@ -93,7 +130,7 @@ def _image_metadata(path: Path) -> dict:
             {"category": "Binario", "check": "Miniatura incrustada", "status": "observed" if thumbnail else "not_available", "observation": "Declarada en EXIF." if thumbnail else "No declarada en EXIF accesible.", "interpretation": "Solo puede compararse cuando existe una miniatura recuperable."},
             {"category": "Consistencia", "check": "Formato y extensión", "status": "consistent" if extension_consistent else "attention", "observation": f"Contenido {image.format}; extensión {path.suffix.lower()}.", "interpretation": "Una discordancia puede indicar renombrado o conversión."},
             {"category": "Consistencia", "check": "Relación de aspecto", "status": "consistent" if deviation <= 2 else "observed", "observation": f"{ratio:.4f}; cercana a {nearest_name}; desviación {deviation:.2f}%.", "interpretation": "Una relación no estándar puede deberse a recorte, exportación o generación; no determina origen."},
-            {"category": "Consistencia", "check": "Coherencia temporal declarada", "status": temporal_status, "observation": f"Original: {dates['original'] or 'N/D'}; digitalizada: {dates['digitized'] or 'N/D'}; modificada: {dates['modified_declared'] or 'N/D'}.", "interpretation": "Compara fechas declaradas; no las autentica."},
+            {"category": "Consistencia", "check": "Coherencia temporal declarada", "status": temporal_finding_status, "observation": f"Original: {dates['original'] or 'N/D'}; digitalizada: {dates['digitized'] or 'N/D'}; modificada: {dates['modified_declared'] or 'N/D'}; cobertura: {temporal_coverage}%.", "interpretation": "Sin conflicto declarado" if len(comparable) < 2 else "Las fechas declaradas mantienen un orden coherente." if temporal_status == "consistent" else "El orden de las fechas declaradas requiere revisión."},
         ]
         observed = sum(item["status"] in {"observed", "consistent", "attention"} for item in findings)
         forensic = {
@@ -101,7 +138,7 @@ def _image_metadata(path: Path) -> dict:
             "statistics": {"exif_fields": len(exif), "iptc_fields": len(iptc), "xmp_present": xmp_present, "dqt_tables": len(binary.get("dqt_tables", [])), "app_segments": binary.get("app_segments_total", 0), "binary_comments": len(binary.get("comments", [])), "thumbnail_declared": thumbnail, "checks_executed": len(findings), "checks_with_observation": observed, "metadata_coverage_percent": round(observed / len(findings) * 100, 1)},
             "descriptive": {"exif": exif, "iptc": iptc, "xmp_present": xmp_present, "capture": {key: exif.get(key) for key in ("Make", "Model", "LensModel", "ExposureTime", "FNumber", "ISOSpeedRatings", "PhotographicSensitivity", "FocalLength") if exif.get(key)}, "dates": dates},
             "binary": binary,
-            "consistency": {"aspect_ratio": round(ratio, 4), "nearest_standard_ratio": nearest_name, "ratio_deviation_percent": round(deviation, 2), "extension_consistent": extension_consistent, "temporal_status": temporal_status},
+            "consistency": {"aspect_ratio": round(ratio, 4), "nearest_standard_ratio": nearest_name, "ratio_deviation_percent": round(deviation, 2), "extension_consistent": extension_consistent, "temporal_status": temporal_status, "temporal_dates_available": len(comparable), "temporal_coverage_percent": temporal_coverage},
             "findings": findings,
             "interpretive_caveat": "Los metadatos apoyan la trazabilidad. Ningún campo aislado confirma que el contenido sea real, generado o manipulado.",
         }
@@ -116,6 +153,7 @@ def _image_metadata(path: Path) -> dict:
             "exif": exif,
             "software": exif.get("Software"),
             "capture_datetime": exif.get("DateTimeOriginal", exif.get("DateTime")),
+            **face_analysis,
             "forensic_metadata": forensic,
         }
 

@@ -47,29 +47,29 @@ def _styles() -> dict[str, ParagraphStyle]:
         ),
         "h1": ParagraphStyle(
             "SectionHeading", parent=base["Heading1"], fontName="Times-Bold",
-            fontSize=12, leading=15, spaceBefore=10, spaceAfter=6,
+            fontSize=11.5, leading=14, spaceBefore=7, spaceAfter=4,
             keepWithNext=True, **common,
         ),
         "h2": ParagraphStyle(
             "SubsectionHeading", parent=base["Heading2"], fontName="Times-Bold",
-            fontSize=11, leading=14, spaceBefore=7, spaceAfter=4,
+            fontSize=10.5, leading=13, spaceBefore=5, spaceAfter=3,
             keepWithNext=True, **common,
         ),
         "body": ParagraphStyle(
             "ReportBody", parent=base["BodyText"], fontName="Times-Roman",
-            fontSize=11, leading=15, alignment=TA_JUSTIFY, spaceAfter=6, **common,
+            fontSize=10, leading=13, alignment=TA_JUSTIFY, spaceAfter=4, **common,
         ),
         "small": ParagraphStyle(
             "ReportSmall", parent=base["BodyText"], fontName="Times-Roman",
-            fontSize=9, leading=12, **common,
+            fontSize=8.5, leading=10.5, **common,
         ),
         "table": ParagraphStyle(
             "TableText", parent=base["BodyText"], fontName="Times-Roman",
-            fontSize=9, leading=12, **common,
+            fontSize=8.2, leading=10, **common,
         ),
         "table_bold": ParagraphStyle(
             "TableTextBold", parent=base["BodyText"], fontName="Times-Bold",
-            fontSize=9, leading=12, **common,
+            fontSize=8.2, leading=10, **common,
         ),
     }
 
@@ -108,8 +108,8 @@ def _table(
         ("VALIGN", (0, 0), (-1, -1), "TOP"),
         ("LEFTPADDING", (0, 0), (-1, -1), 6),
         ("RIGHTPADDING", (0, 0), (-1, -1), 6),
-        ("TOPPADDING", (0, 0), (-1, -1), 5),
-        ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
+        ("TOPPADDING", (0, 0), (-1, -1), 3.5),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 3.5),
         ("BACKGROUND", (0, 0), (0, -1), VERY_LIGHT_GRAY),
     ]
     if header:
@@ -153,6 +153,39 @@ def _support_level(record: Analysis) -> tuple[str, str]:
     return level, (
         "Categoría descriptiva basada en un score sin calibrar. No es una razón "
         "de verosimilitud ni la probabilidad de que la hipótesis sea verdadera."
+    )
+
+
+def _score_odds(record: Analysis) -> str:
+    probability = max(0.0001, min(0.9999, float(record.confidence or 0.0) / 100.0))
+    odds = probability / (1.0 - probability)
+    return f"{odds:.2f}:1 a favor de {record.prediction} (odds del score; no LR forense)"
+
+
+def _calibration_summary(validation: dict[str, Any]) -> str:
+    metrics = validation.get("metrics") or {}
+    samples = int(metrics.get("samples") or 0)
+    if not samples:
+        return "0 muestras etiquetadas · sin estimación externa válida"
+    parts = [f"{samples} muestras"]
+    for key, label in (("accuracy", "accuracy"), ("expected_calibration_error", "ECE"), ("brier_score", "Brier")):
+        if metrics.get(key) is not None:
+            parts.append(f"{label} {float(metrics[key]) * 100:.2f}%")
+    return " · ".join(parts)
+
+
+def _metadata_assessment(forensic: dict[str, Any], prediction: str) -> str:
+    stats = forensic.get("statistics", {})
+    consistency = forensic.get("consistency", {})
+    findings = forensic.get("findings", [])
+    attention = sum(item.get("status") == "attention" for item in findings)
+    return (
+        f"Se ejecutaron {stats.get('checks_executed', 0)} comprobaciones y "
+        f"{stats.get('checks_with_observation', 0)} produjeron observaciones. "
+        f"Se detectaron {attention} conflictos que requieren revisión. La extensión "
+        f"{'coincide' if consistency.get('extension_consistent') else 'no coincide'} con el formato. "
+        f"Estos rastros {'no contradicen' if attention == 0 else 'requieren contrastar'} el resultado {prediction}, "
+        "pero los metadatos por sí solos no confirman la clase."
     )
 
 
@@ -306,9 +339,11 @@ def create_pdf_report(record: Analysis) -> bytes:
     elif record.media_type == "audio":
         methodology_rows.append(["Segmentos acústicos", metadata.get("chunk_count", "No registrado")])
     elif record.media_type == "image":
+        technical = metadata.get("technical_metadata", {})
         methodology_rows.extend([
             ["Dimensiones analizadas", f"{metadata.get('image_width', 'N/D')} × {metadata.get('image_height', 'N/D')} px"],
-            ["Rostros/candidatos detectados", metadata.get("faces_detected", "No aplica al detector de generación")],
+            ["Rostros/candidatos detectados", metadata.get("faces_detected", technical.get("faces_detected", 0))],
+            ["Mayor rostro respecto de la imagen", f"{metadata.get('largest_face_area_percent', technical.get('largest_face_area_percent', 0))}%"],
         ])
     story: list[Any] = [
         Paragraph("INFORME TÉCNICO DE ANÁLISIS FORENSE DIGITAL", styles["title"]),
@@ -330,8 +365,8 @@ def create_pdf_report(record: Analysis) -> bytes:
             ["Score/confianza del modelo", f"{record.confidence:.2f}%"],
             ["Nivel de soporte descriptivo", support_level],
             ["Calidad de evidencia", f"{float(quality.get('score', 0.0)):.2f}%" if quality else "No calculada"],
-            ["Calibración externa", "Disponible" if validation.get("calibrated") else "Pendiente"],
-            ["Razón de verosimilitud (LR)", metadata.get("likelihood_ratio", "No calculada")],
+            ["Calibración externa (dataset)", _calibration_summary(validation)],
+            ["Odds del score del modelo", _score_odds(record)],
         ], styles, [58 * mm, 112 * mm]),
         Spacer(1, 4),
         Paragraph(
@@ -456,11 +491,11 @@ def create_pdf_report(record: Analysis) -> bytes:
             _metadata_coverage_chart(forensic_stats),
             Paragraph("Matriz de hallazgos de metadatos", styles["h2"]),
             _table([["Capa", "Prueba", "Estado", "Dato e interpretación"]] + [[item.get("category"), item.get("check"), item.get("status"), f"{item.get('observation')} {item.get('interpretation')}"] for item in forensic.get("findings", [])], styles, [28 * mm, 35 * mm, 27 * mm, 80 * mm], header=True),
+            Paragraph(_metadata_assessment(forensic, str(record.prediction)), styles["body"]),
             Paragraph(forensic.get("interpretive_caveat"), styles["body"]),
         ])
 
     story.extend([
-        PageBreak(),
         Paragraph("6. Recomendaciones de fortalecimiento y verificación certificada", styles["h1"]),
         Paragraph(
             "El score es una salida del modelo. No equivale a accuracy, tasa de error, "
@@ -500,11 +535,25 @@ def create_pdf_report(record: Analysis) -> bytes:
         "ISO/IEC 19795-1:2021. Information technology — Biometric performance testing and reporting — Part 1: Principles and framework.",
         "Coalition for Content Provenance and Authenticity (C2PA). Conformance Program and official Trust List.",
     ]
-    for index, reference in enumerate(references, 1):
-        story.extend([
-            Paragraph(f"[{index}] {escape(reference)}", styles["small"]),
-            Spacer(1, 3),
-        ])
+    reference_cells = [
+        Paragraph(f"[{index}] {escape(reference)}", styles["small"])
+        for index, reference in enumerate(references, 1)
+    ]
+    reference_rows = [
+        reference_cells[index:index + 2]
+        for index in range(0, len(reference_cells), 2)
+    ]
+    if reference_rows and len(reference_rows[-1]) == 1:
+        reference_rows[-1].append("")
+    reference_table = Table(reference_rows, colWidths=[85 * mm, 85 * mm])
+    reference_table.setStyle(TableStyle([
+        ("VALIGN", (0, 0), (-1, -1), "TOP"),
+        ("LEFTPADDING", (0, 0), (-1, -1), 0),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 7),
+        ("TOPPADDING", (0, 0), (-1, -1), 2),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 2),
+    ]))
+    story.append(reference_table)
     story.extend([
         Spacer(1, 8),
         Paragraph(
