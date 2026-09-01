@@ -1,6 +1,7 @@
 from app.detector.image_ai_detector import normalize_ai_label
 from app.detector.image_deepfake_detector import (
     _classify_probabilities,
+    _has_fake_consensus,
     _select_primary_face,
     normalize_deepfake_label,
 )
@@ -60,3 +61,18 @@ def test_similar_sized_faces_require_separate_analysis():
 
     assert face is None
     assert ratio is not None and ratio < 2
+
+
+def test_single_face_uses_configured_fake_threshold():
+    assert _has_fake_consensus([{"FAKE": 75.42, "REAL": 24.58}])
+
+
+def test_group_requires_repeated_or_very_strong_fake_evidence():
+    assert not _has_fake_consensus([
+        {"FAKE": 75.42, "REAL": 24.58},
+        {"FAKE": 20.0, "REAL": 80.0},
+    ])
+    assert _has_fake_consensus([
+        {"FAKE": 75.42, "REAL": 24.58},
+        {"FAKE": 70.0, "REAL": 30.0},
+    ])

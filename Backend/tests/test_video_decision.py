@@ -5,6 +5,7 @@ from app.detector.video_detector import (
     _is_valid_result,
     _required_suspicious_frames,
     _sample_frame_indexes,
+    _select_ai_temporal_signal,
     _suspicious_probability,
 )
 from app.detector.model_loader import VIDEO_AI_MODEL_NAME, VIDEO_DEEPFAKE_MODEL_NAME
@@ -46,3 +47,35 @@ def test_partial_manipulation_requires_multiple_suspicious_frames():
 
 def test_required_suspicious_frames_scales_with_longer_sampling():
     assert _required_suspicious_frames(100) == 10
+
+
+def test_strong_ai_checkpoint_is_not_cancelled_by_out_of_domain_checkpoint():
+    selected, suspicious = _select_ai_temporal_signal(
+        {
+            "ai-edited-detector": [84.0, 86.0, 88.0, 82.0],
+            "synthetic-image-detector": [0.2, 0.4, 0.3, 0.5],
+        },
+        required_frames=2,
+    )
+
+    assert selected == "ai-edited-detector"
+    assert suspicious == [84.0, 86.0, 88.0, 82.0]
+
+
+def test_single_ai_spike_does_not_override_temporal_requirement():
+    selected, suspicious = _select_ai_temporal_signal(
+        {"noisy-detector": [95.0, 10.0, 12.0, 14.0]}, required_frames=2
+    )
+
+    assert selected is None
+    assert suspicious == []
+
+
+def test_repeated_ai_segments_do_not_require_global_median():
+    selected, suspicious = _select_ai_temporal_signal(
+        {"temporal-detector": [82.0, 9.0, 78.0, 11.0, 85.0, 12.0]},
+        required_frames=3,
+    )
+
+    assert selected == "temporal-detector"
+    assert suspicious == [82.0, 78.0, 85.0]
