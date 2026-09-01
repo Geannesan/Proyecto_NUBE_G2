@@ -27,12 +27,17 @@ def find_reviewed_sample(path: Path) -> dict | None:
             if line.strip()
         ]
     for entry in entries:
-        if entry.get("review_status") != "approved":
-            continue
         sample_role = None
-        if entry.get("edited_sha256") == digest:
+        fully_approved = entry.get("review_status") == "approved"
+        if (
+            entry.get("edited_sha256") == digest
+            and (fully_approved or entry.get("edited_review_status") == "approved")
+        ):
             sample_role = "edited"
-        elif entry.get("original_sha256", entry.get("reference_sha256")) == digest:
+        elif (
+            entry.get("original_sha256", entry.get("reference_sha256")) == digest
+            and (fully_approved or entry.get("original_review_status") == "approved")
+        ):
             sample_role = "original"
         if sample_role:
             return {
